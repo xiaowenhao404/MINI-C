@@ -178,6 +178,25 @@ void analyze_return_statement(SemanticAnalyzer *sa, struct Tree *return_stmt);
  */
 Type* analyze_function_call(SemanticAnalyzer *sa, struct Tree *call_node);
 
+/* ==================== 数组分析函数（2.0版本）==================== */
+
+/**
+ * 分析数组声明
+ * 
+ * @param sa 语义分析器指针
+ * @param decl 数组声明节点
+ */
+void analyze_array_declaration(SemanticAnalyzer *sa, struct Tree *decl);
+
+/**
+ * 分析数组访问
+ * 
+ * @param sa 语义分析器指针
+ * @param access 数组访问节点
+ * @return 数组元素类型
+ */
+Type* analyze_array_access(SemanticAnalyzer *sa, struct Tree *access);
+
 /* ==================== 类型检查辅助函数 ==================== */
 
 /**

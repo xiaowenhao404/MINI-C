@@ -290,6 +290,12 @@ Type* analyze_expression(SemanticAnalyzer *sa, struct Tree *expr) {
         return analyze_function_call(sa, expr);
     }
     
+    // 数组访问表达式（2.0版本）
+    // 通过检查 declator 字段判断是否为数组访问
+    if (expr->declator && strcmp(expr->declator->name, "Array") == 0) {
+        return analyze_array_access(sa, expr);
+    }
+    
     // 常量表达式
     Type *type = get_node_type(sa, expr);
     if (type) {
@@ -622,6 +628,12 @@ void analyze_statement(SemanticAnalyzer *sa, struct Tree *stmt) {
         // return语句（2.0版本）
         else if (strcmp(stmt->name, "return_expression") == 0) {
             analyze_return_statement(sa, stmt);
+        }
+        // 数组声明（2.0版本）
+        else if (strcmp(stmt->name, "ARRAY_DECL") == 0 ||
+                 strcmp(stmt->name, "ARRAY_DECL_INIT") == 0 ||
+                 strcmp(stmt->name, "ARRAY_2D_DECL") == 0) {
+            analyze_array_declaration(sa, stmt);
         }
         // 声明语句
         else if (is_declaration_node(stmt)) {
@@ -1059,5 +1071,230 @@ Type* analyze_function_call(SemanticAnalyzer *sa, Tree *call_node) {
     
     // 4. 返回函数返回类型
     return func_type->return_type;
+}
+
+/* ==================== 数组分析函数（2.0版本）==================== */
+
+/**
+ * 分析数组声明
+ * 
+ * @param sa 语义分析器
+ * @param decl 数组声明节点（ARRAY_DECL 或 ARRAY_DECL_INIT）
+ */
+void analyze_array_declaration(SemanticAnalyzer *sa, Tree *decl) {
+    if (!sa || !decl) {
+        return;
+    }
+    
+    // 判断是一维还是二维数组
+    bool is_2d = (strcmp(decl->name, "ARRAY_2D_DECL") == 0);
+    
+    // ARRAY_DECL 结构: type ID [size] 或 type ID [size] = {init_list}
+    // ARRAY_2D_DECL 结构: type ID [rows] [cols]
+    // leaves[0]: type 节点
+    // leaves[1]: ID 节点
+    // leaves[2]: size/rows (INT10 节点)
+    // leaves[3]: cols (INT10 节点，仅二维数组) 或 init_list
+    
+    Tree *type_node = decl->leaves[0];
+    Tree *name_node = decl->leaves[1];
+    Tree *size1_node = decl->leaves[2];
+    Tree *size2_or_init = (decl->num > 3) ? decl->leaves[3] : NULL;
+    
+    // 1. 获取基类型
+    Type *base_type = NULL;
+    if (type_node && type_node->content) {
+        if (strcmp(type_node->content, "INT") == 0) {
+            base_type = new_int_type();
+        } else if (strcmp(type_node->content, "FLOAT") == 0) {
+            base_type = new_float_type();
+        } else if (strcmp(type_node->content, "CHAR") == 0) {
+            base_type = new_char_type();
+        }
+    }
+    
+    if (!base_type) {
+        semantic_error(sa, decl->line, "无效的数组基类型");
+        return;
+    }
+    
+    Type *array_type = NULL;
+    Tree *init_list = NULL;
+    
+    if (is_2d) {
+        // 二维数组
+        int rows = 0, cols = 0;
+        
+        if (size1_node && size1_node->content) {
+            rows = atoi(size1_node->content);
+        }
+        if (size2_or_init && size2_or_init->content) {
+            cols = atoi(size2_or_init->content);
+        }
+        
+        // 验证维度
+        if (rows <= 0 || cols <= 0) {
+            semantic_error(sa, decl->line, 
+                          "二维数组维度必须为正整数：[%d][%d]", rows, cols);
+            return;
+        }
+        
+        // 创建二维数组类型：先创建列数组，再创建行数组
+        Type *col_array = new_array_type(base_type, cols);
+        array_type = new_array_type(col_array, rows);
+        
+    } else {
+        // 一维数组
+        int length = 0;
+        if (size1_node && size1_node->content) {
+            length = atoi(size1_node->content);
+        }
+        
+        // 验证数组大小
+        if (length <= 0) {
+            semantic_error(sa, decl->line, "数组长度必须为正整数，当前为 %d", length);
+            return;
+        }
+        
+        // 创建数组类型
+        array_type = new_array_type(base_type, length);
+        
+        // 检查是否有初始化列表
+        init_list = size2_or_init;
+    }
+    
+    if (!array_type) {
+        semantic_error(sa, decl->line, "创建数组类型失败");
+        return;
+    }
+    
+    // 插入符号表
+    char *array_name = name_node->content;
+    Symbol *sym = symbol_insert(sa->symbol_table, array_name, array_type, decl->line);
+    if (!sym) {
+        semantic_error(sa, decl->line, "数组 '%s' 重定义", array_name);
+        return;
+    }
+    
+    sym->is_initialized = (init_list != NULL);
+    
+    // 如果有初始化列表，检查初始化值
+    if (init_list) {
+        int init_count = count_initializers(init_list);
+        int expected_count = is_2d ? 0 : array_type->array_len;  // 二维数组初始化更复杂
+        
+        if (!is_2d && init_count > expected_count) {
+            semantic_warning(sa, decl->line,
+                          "初始化列表元素过多：数组长度 %d，提供 %d 个初始值",
+                          expected_count, init_count);
+        }
+        
+        // 检查每个初始值的类型
+        check_initializer_types(sa, init_list, base_type);
+    }
+}
+
+/**
+ * 计数初始化列表中的元素数量
+ */
+static int count_initializers(Tree *init_list) {
+    if (!init_list) {
+        return 0;
+    }
+    
+    if (strcmp(init_list->name, "INIT_LIST") == 0) {
+        return count_initializers(init_list->leaves[0]) + 1;
+    }
+    
+    return 1;  // 单个初始值
+}
+
+/**
+ * 检查初始化列表中值的类型
+ */
+static void check_initializer_types(SemanticAnalyzer *sa, Tree *init_list, Type *expected_type) {
+    if (!init_list) {
+        return;
+    }
+    
+    if (strcmp(init_list->name, "INIT_LIST") == 0) {
+        // 递归检查列表
+        check_initializer_types(sa, init_list->leaves[0], expected_type);
+        check_initializer_types(sa, init_list->leaves[1], expected_type);
+    } else {
+        // 单个初始值
+        Type *init_type = analyze_expression(sa, init_list);
+        if (init_type && !type_compatible(expected_type, init_type)) {
+            semantic_warning(sa, init_list->line,
+                          "初始化值类型不匹配：期望 %s，实际 %s",
+                          type_to_string(expected_type),
+                          type_to_string(init_type));
+        }
+    }
+}
+
+/**
+ * 分析数组访问表达式
+ * 
+ * @param sa 语义分析器
+ * @param access 数组访问节点
+ * @return 数组元素的类型
+ */
+Type* analyze_array_access(SemanticAnalyzer *sa, Tree *access) {
+    if (!sa || !access) {
+        return NULL;
+    }
+    
+    // 数组访问由 postfix_expression '[' expr ']' 生成
+    // 通过 addDeclator 创建，节点可能名为 "Array" 或包含 declator 字段
+    
+    // 提取数组名和下标（具体结构需要查看 addDeclator 的实现）
+    // 假设结构: leaves[0] 是数组名, leaves[1] 是下标
+    
+    Tree *array_node = access->leaves[0];
+    Tree *index_node = access->leaves[1];
+    
+    // 1. 检查数组类型
+    char *array_name = NULL;
+    if (array_node->name && strcmp(array_node->name, "ID") == 0) {
+        array_name = array_node->content;
+    } else {
+        // 可能是复杂表达式
+        return NULL;
+    }
+    
+    Symbol *array_sym = symbol_lookup(sa->symbol_table, array_name);
+    if (!array_sym) {
+        semantic_error(sa, access->line, "未定义的标识符 '%s'", array_name);
+        return NULL;
+    }
+    
+    if (array_sym->type->kind != TYPE_ARRAY) {
+        semantic_error(sa, access->line, "'%s' 不是数组", array_name);
+        return NULL;
+    }
+    
+    // 2. 检查下标类型
+    Type *index_type = analyze_expression(sa, index_node);
+    if (index_type && !is_integer_type(index_type)) {
+        semantic_error(sa, access->line, "数组下标必须是整数类型");
+        return NULL;
+    }
+    
+    // 3. 编译期越界检查（如果下标是常量）
+    if (index_node && index_node->name && 
+        (strcmp(index_node->name, "INT10") == 0 ||
+         strcmp(index_node->name, "INT8") == 0 ||
+         strcmp(index_node->name, "INT16") == 0)) {
+        int index = atoi(index_node->content);
+        if (index < 0 || index >= array_sym->type->array_len) {
+            semantic_error(sa, access->line,
+                          "数组下标越界：索引 %d 超出范围 [0, %d)",
+                          index, array_sym->type->array_len);
+        }
+    }
+    
+    // 4. 返回元素类型
+    return array_sym->type->base;
 }
 

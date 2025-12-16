@@ -172,6 +172,11 @@ char* translate_expression(IRBuilder *builder, struct Tree *expr, Type *expr_typ
         return translate_function_call(builder, expr, expr_type);
     }
     
+    // 数组访问表达式（2.0版本）
+    if (expr->declator && strcmp(expr->declator->name, "Array") == 0) {
+        return translate_array_access(builder, expr);
+    }
+    
     // 常量表达式：INT10, INT8, INT16
     if (expr->name && 
         (strcmp(expr->name, "INT10") == 0 ||
@@ -698,5 +703,69 @@ void translate_return_statement(IRBuilder *builder, Tree *return_stmt) {
         IRInstruction *ret = ir_instruction_create(IR_RETURN, NULL, NULL, NULL);
         emit(builder, ret);
     }
+}
+
+/* ==================== 数组翻译（2.0版本）==================== */
+
+/**
+ * 翻译数组访问表达式
+ * 
+ * @param builder IR构建器
+ * @param access 数组访问节点
+ * @return 存储元素值的临时变量名
+ */
+char* translate_array_access(IRBuilder *builder, Tree *access) {
+    if (!builder || !access) {
+        return NULL;
+    }
+    
+    // 数组访问节点结构: leaves[0] 是数组名, leaves[1] 是下标
+    Tree *array_node = access->leaves[0];
+    Tree *index_node = access->leaves[1];
+    
+    if (!array_node || !index_node) {
+        return NULL;
+    }
+    
+    char *array_name = array_node->content;
+    
+    // 1. 翻译下标表达式
+    char *index_result = translate_expression(builder, index_node, NULL);
+    if (!index_result) {
+        return NULL;
+    }
+    
+    // 2. 获取数组符号信息（需要知道元素大小）
+    Symbol *array_sym = symbol_lookup(builder->symbol_table, array_name);
+    if (!array_sym || array_sym->type->kind != TYPE_ARRAY) {
+        free(index_result);
+        return NULL;
+    }
+    
+    int element_size = array_sym->type->base->size;
+    
+    // 3. 计算偏移量: offset = index * element_size
+    char *offset_temp = new_temp(builder);
+    char size_str[32];
+    snprintf(size_str, sizeof(size_str), "%d", element_size);
+    
+    IRInstruction *mul_inst = ir_instruction_create(IR_MUL, index_result, size_str, offset_temp);
+    emit(builder, mul_inst);
+    
+    // 4. 计算元素地址: addr = array_base + offset
+    char *addr_temp = new_temp(builder);
+    IRInstruction *addr_inst = ir_instruction_create(IR_ARRAY_ADDR, array_name, offset_temp, addr_temp);
+    emit(builder, addr_inst);
+    
+    // 5. 加载元素值: value = *addr
+    char *value_temp = new_temp(builder);
+    IRInstruction *load_inst = ir_instruction_create(IR_LOAD, addr_temp, NULL, value_temp);
+    emit(builder, load_inst);
+    
+    free(index_result);
+    free(offset_temp);
+    free(addr_temp);
+    
+    return value_temp;
 }
 

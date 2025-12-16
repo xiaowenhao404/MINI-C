@@ -30,8 +30,11 @@ typedef enum {
     /* 函数调用（2.0版本扩展）*/
     IR_FUNC_BEGIN, IR_FUNC_END,  // 函数边界标记
     IR_PARAM, IR_CALL, IR_RETURN,
-    /* 数组和指针 */
-    IR_LOAD, IR_STORE, IR_ADDR
+    /* 数组和指针（2.0版本扩展）*/
+    IR_ARRAY_ADDR,  // 数组元素地址计算: addr = base + index * size
+    IR_LOAD,        // 从地址加载: result = *addr
+    IR_STORE,       // 存储到地址: *addr = value
+    IR_ADDR         // 取地址: result = &var
 } IROpcode;
 
 /**

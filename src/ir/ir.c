@@ -89,6 +89,7 @@ const char* opcode_to_string(IROpcode op) {
         case IR_PARAM: return "arg";
         case IR_CALL: return "call";
         case IR_RETURN: return "return";
+        case IR_ARRAY_ADDR: return "array_addr";
         case IR_LOAD: return "load";
         case IR_STORE: return "store";
         case IR_ADDR: return "&";
@@ -174,6 +175,35 @@ void ir_instruction_to_string(IRInstruction *inst, char *buffer, int size) {
         case IR_PARAM:
             // 参数: "arg t0"
             snprintf(buffer, size, "arg %s", inst->arg1 ? inst->arg1 : "?");
+            break;
+            
+        case IR_ARRAY_ADDR:
+            // 数组地址: "t0 = array_addr arr offset"
+            snprintf(buffer, size, "%s = array_addr %s %s",
+                    inst->result ? inst->result : "?",
+                    inst->arg1 ? inst->arg1 : "?",
+                    inst->arg2 ? inst->arg2 : "?");
+            break;
+            
+        case IR_LOAD:
+            // 加载: "t0 = load addr"
+            snprintf(buffer, size, "%s = load %s",
+                    inst->result ? inst->result : "?",
+                    inst->arg1 ? inst->arg1 : "?");
+            break;
+            
+        case IR_STORE:
+            // 存储: "store value addr"
+            snprintf(buffer, size, "store %s %s",
+                    inst->arg1 ? inst->arg1 : "?",
+                    inst->arg2 ? inst->arg2 : "?");
+            break;
+            
+        case IR_ADDR:
+            // 取地址: "t0 = &var"
+            snprintf(buffer, size, "%s = &%s",
+                    inst->result ? inst->result : "?",
+                    inst->arg1 ? inst->arg1 : "?");
             break;
             
         case IR_NOT:

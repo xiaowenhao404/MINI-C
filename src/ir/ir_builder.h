@@ -180,6 +180,17 @@ char* translate_function_call(IRBuilder *builder, struct Tree *call_node, Type *
  */
 void translate_return_statement(IRBuilder *builder, struct Tree *return_stmt);
 
+/* ==================== 数组翻译（2.0版本）==================== */
+
+/**
+ * 翻译数组访问表达式
+ * 
+ * @param builder IR构建器指针
+ * @param access 数组访问 AST 节点
+ * @return 存储元素值的临时变量名
+ */
+char* translate_array_access(IRBuilder *builder, struct Tree *access);
+
 /* ==================== 输出 IR ==================== */
 
 /**

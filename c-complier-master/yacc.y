@@ -40,7 +40,7 @@ multiplicative_expression additive_expression relational_expression equality_exp
 logical_and_expression logical_or_expression assignment_expression operate_expression declare_expression
 nullable_expression while_expression for_expression funcion_expression if_expression if_identifier return_expression null unary_operator
 main_function sentence statement assignment_operator single_expression
-function_definition parameter_list parameter_declaration external_declaration argument_list
+function_definition parameter_list parameter_declaration external_declaration argument_list assignment_expression_list
 
 %precedence ')'
 %precedence ELSE
@@ -325,6 +325,37 @@ declare_expression
             putTree(hashMap, $2);
             preType = type = 0;
         }
+    }
+    | type ID '[' INT10 ']'
+    {
+        $$ = createTree("ARRAY_DECL", 3, $1, $2, $4);
+        $$->line = yylineno;
+        putTree(hashMap, $2);
+        preType = type = 0;
+    }
+    | type ID '[' INT10 ']' '[' INT10 ']'
+    {
+        $$ = createTree("ARRAY_2D_DECL", 4, $1, $2, $4, $7);
+        $$->line = yylineno;
+        putTree(hashMap, $2);
+        preType = type = 0;
+    }
+    | type ID '[' INT10 ']' '=' '{' assignment_expression_list '}'
+    {
+        $$ = createTree("ARRAY_DECL_INIT", 4, $1, $2, $4, $8);
+        $$->line = yylineno;
+        putTree(hashMap, $2);
+        preType = type = 0;
+    }
+;
+
+/* 初始化列表（用于数组初始化）*/
+assignment_expression_list
+    : assignment_expression
+    | assignment_expression_list ',' assignment_expression
+    {
+        $$ = createTree("INIT_LIST", 2, $1, $3);
+        $$->line = yylineno;
     }
 ;
 

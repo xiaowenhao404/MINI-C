@@ -4,7 +4,7 @@ overview: 为 Mini-C 编译器 2.0 版本创建详细的任务计划，包含函
 todos:
   - id: task205
     content: 实现函数定义和调用支持
-    status: in_progress
+    status: completed
   - id: task206
     content: 实现函数参数和返回值优化
     status: pending
@@ -12,12 +12,12 @@ todos:
       - task205
   - id: task201
     content: 实现一维数组支持
-    status: pending
+    status: completed
     dependencies:
       - task205
   - id: task202
     content: 实现多维数组支持
-    status: pending
+    status: completed
     dependencies:
       - task201
   - id: task203
