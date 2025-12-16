@@ -98,16 +98,38 @@
 
 - 死代码消除模块 `src/optimization/dead_code_elim.h` 和 `dead_code_elim.c`
 - AST 层面递归遍历和死代码检测算法
-- 恒假条件优化：if(0){...} → 删除（或保留else分支）
-- 恒真条件优化：if(1){A}else{B} → A（删除else分支）
+- 恒假条件优化：if(0){...} → 删除（或保留 else 分支）
+- 恒真条件优化：if(1){A}else{B} → A（删除 else 分支）
 - 恒假循环优化：while(0){...} → 删除整个循环
 - 无限循环检测：while(1){...} 保留但给出警告
 - 与常量折叠协同：先折叠再消除
 - 常量条件判断：is_constant_zero/is_constant_nonzero
 - 节点类型识别：is_if_statement/is_while_statement
-- 优化统计：跟踪消除的if块、else块、循环和节点数量
-- 安全优化：保持AST结构完整性
+- 优化统计：跟踪消除的 if 块、else 块、循环和节点数量
+- 安全优化：保持 AST 结构完整性
 - 完整的单元测试套件（9 个测试，100%通过）
+
+#### TASK008: 代码生成器增强 ✅
+
+- 增强型代码生成器 `scripts/asm_generator.py`（460+ 行）
+- 完整支持整数运算：+, -, \*, /, %（使用 eax/ebx）
+- 新增浮点运算：f+, f-, f\*, f/（使用 xmm0/xmm1/SSE 指令）
+- 新增类型转换：i2f (int→float), f2i (float→int)
+  * i2f：`cvtsi2ss xmm0, eax`
+  * f2i：`cvttss2si eax, xmm0`
+- SSE 指令集支持：movss, addss, subss, mulss, divss, cvtsi2ss, cvttss2si
+- 浮点输出：output_float（格式 %.2f）
+- 变量类型追踪：区分整数和浮点变量
+- x86-64 System V ABI 调用约定
+- 栈帧管理：自动分配和对齐
+- 测试用例：
+  * test_float_ops.c - 浮点运算综合测试
+  * test_type_conversion.c - 类型转换专项测试
+  * test_asm_generator.py - 自动化测试套件（6 个测试场景）
+- 详细文档：
+  * docs/codegen_manual.md - 代码生成器使用手册（300+ 行）
+  * tests/codegen/README.md - 测试指南
+  * tests/codegen/example_innercode.txt - 示例中间代码
 
 ### 变更
 
@@ -156,6 +178,7 @@
 - TASK005: ✅ 中间代码生成器重构（已完成）
 - TASK006: ✅ 常量折叠优化实现（已完成）
 - TASK007: ✅ 死代码消除优化实现（已完成）
+- TASK008: ✅ 代码生成器增强（已完成）
 - TASK004: 语义分析器实现
 - TASK005: 中间代码生成器重构
 - TASK006: 常量折叠优化实现

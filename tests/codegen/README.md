@@ -1,0 +1,131 @@
+# 代码生成测试
+
+本目录包含代码生成器的测试用例。
+
+## 测试文件
+
+### test_float_ops.c
+测试浮点运算功能：
+- 浮点常量定义
+- 浮点四则运算（f+, f-, f*, f/）
+- 浮点数输出
+- 整数和浮点混合运算
+
+**期望输出**：
+```
+13
+5.64
+0.64
+7.85
+1.26
+10.00
+13.14
+```
+
+### test_type_conversion.c
+测试类型转换功能：
+- int → float 转换（i2f指令）
+- float → int 转换（f2i指令）
+- 转换后参与运算
+
+**期望输出**：
+```
+42.00
+3
+-10.00
+5.00
+```
+
+## 运行测试
+
+### 前提条件
+1. 完成词法分析和语法分析，生成AST
+2. 完成语义分析和IR生成，生成Innercode文件
+3. 安装nasm和gcc（Linux/WSL环境）
+
+### 测试步骤
+
+#### 方法1：使用脚本（推荐）
+```bash
+# 运行完整编译流程测试
+python scripts/run_test.py tests/codegen/test_float_ops.c
+```
+
+#### 方法2：手动测试
+```bash
+# 1. 编译Mini-C代码到中间代码
+./compiler tests/codegen/test_float_ops.c
+
+# 2. 生成汇编代码
+python scripts/asm_generator.py
+
+# 3. 汇编和链接
+nasm -f elf64 assembly.asm -o assembly.o
+gcc assembly.o -o test_output -no-pie
+
+# 4. 运行测试
+./test_output
+```
+
+### 验证要点
+
+#### 浮点指令检查
+生成的assembly.asm应包含：
+- `movss xmm0, [rbp-X]` - 浮点数加载
+- `addss/subss/mulss/divss` - 浮点运算
+- `movss [rbp-X], xmm0` - 浮点数存储
+
+#### 类型转换指令检查
+- `cvtsi2ss xmm0, eax` - int→float
+- `cvttss2si eax, xmm0` - float→int
+
+#### 输出格式检查
+- 整数输出：`"%d"`
+- 浮点输出：`"%.2f"`（保留2位小数）
+
+## 常见问题
+
+### Q1: 浮点立即数如何处理？
+**A**: 使用`__float32__()`伪指令或通过内存加载。本实现简化为通过eax寄存器中转。
+
+### Q2: printf浮点参数为何需要double？
+**A**: x86-64调用约定中，可变参数的float会自动提升为double。使用`cvtss2sd`转换。
+
+### Q3: 为何整数和浮点都分配4字节？
+**A**: 简化栈管理。实际中float和int都是4字节，double是8字节。
+
+### Q4: SSE寄存器使用原则？
+**A**: 
+- xmm0: 第一操作数和返回值
+- xmm1: 第二操作数
+- xmm2-xmm7: 临时变量（本实现暂未用）
+
+## 调试技巧
+
+### 查看生成的汇编
+```bash
+cat assembly.asm | grep -E "(movss|addss|cvt)" -A 2 -B 2
+```
+
+### GDB调试浮点
+```bash
+gdb ./test_output
+(gdb) break main
+(gdb) run
+(gdb) info registers xmm0  # 查看xmm0寄存器
+(gdb) x/f $rbp-8           # 查看内存中的float
+```
+
+### objdump反汇编
+```bash
+objdump -d assembly.o | less
+```
+
+## 扩展功能（TODO）
+
+- [ ] double类型支持（8字节）
+- [ ] 浮点比较运算（comiss）
+- [ ] 浮点向量运算（SIMD）
+- [ ] 浮点输入（scanf %f）
+- [ ] 数学库函数（sin, cos, sqrt等）
+

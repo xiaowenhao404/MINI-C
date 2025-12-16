@@ -1,0 +1,52 @@
+# Mini-C 代码生成器测试 - 示例Innercode文件
+
+## 示例1：整数运算
+1 a = 10
+2 b = 3
+3 t1 = a + b
+4 arg t1
+5 call output_int
+6 return
+
+## 示例2：浮点加法
+1 x = 3.14
+2 y = 2.5
+3 t1 = x f+ y
+4 arg t1
+5 call output_float
+6 return
+
+## 示例3：int到float转换
+1 a = 42
+2 t1 i2f a
+3 arg t1
+4 call output_float
+5 return
+
+## 示例4：float到int转换
+1 x = 3.99
+2 t1 f2i x
+3 arg t1
+4 call output_int
+5 return
+
+## 示例5：浮点四则运算
+1 a = 10.0
+2 b = 2.0
+3 t1 = a f+ b
+4 t2 = a f- b
+5 t3 = a f* b
+6 t4 = a f/ b
+7 arg t4
+8 call output_float
+9 return
+
+## 使用方法：
+# 1. 将其中一个示例内容（去掉#注释）保存为 Innercode 文件
+# 2. 运行：python scripts/asm_generator.py
+# 3. 查看生成的 assembly.asm 文件
+# 4. 使用 nasm 和 gcc 编译：
+#    nasm -f elf64 assembly.asm -o assembly.o
+#    gcc assembly.o -o test -no-pie
+#    ./test
+
