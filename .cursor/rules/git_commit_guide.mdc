@@ -1,0 +1,489 @@
+# Git 提交指南 - 避免 PowerShell 中文乱码
+
+## 📋 规则说明
+
+本规则用于指导 Mini-C 编译器项目的 Git 提交操作，特别是在 Windows PowerShell 环境下避免中文乱码问题。
+
+---
+
+## 🚨 核心原则
+
+**永远不要在 PowerShell 中直接使用 `git commit -m "中文信息"` 命令！**
+
+PowerShell 的编码机制会导致中文字符乱码，必须使用以下推荐方法。
+
+---
+
+## ✅ 推荐方法
+
+### 方法一：使用 Git Bash（最推荐）⭐⭐⭐⭐⭐
+
+**优势**：完全避免编码问题，操作最简单
+
+**步骤**：
+1. 在项目目录右键选择 "Git Bash Here"
+2. 正常使用 Git 命令：
+
+```bash
+# 查看状态
+git status
+
+# 添加文件
+git add .
+
+# 提交（单行）
+git commit -m "feat: 功能描述"
+
+# 提交（多行，推荐）
+git commit -m "feat: 功能标题" \
+           -m "" \
+           -m "- 详细说明1" \
+           -m "- 详细说明2" \
+           -m "- 详细说明3"
+
+# 查看提交历史
+git log --oneline -5
+
+# 查看最新提交详情
+git log -1
+```
+
+**提交信息格式规范**：
+```
+<类型>: <简短描述>
+
+- 详细说明1
+- 详细说明2
+- 相关任务编号（如 TASK001）
+```
+
+---
+
+### 方法二：使用提交信息文件 ⭐⭐⭐⭐
+
+**适用场景**：必须在 PowerShell 中操作，或需要复杂的多行提交信息
+
+**步骤**：
+
+#### 2.1 创建临时提交信息文件
+
+在 PowerShell 中：
+
+```powershell
+# 创建 UTF-8 编码的临时文件
+@"
+feat: 功能标题
+
+- 详细说明1
+- 详细说明2
+- 详细说明3
+"@ | Out-File -FilePath commit_msg.txt -Encoding UTF8
+```
+
+或者直接用编辑器创建 `commit_msg.txt`：
+
+```
+feat: 完成类型系统重构
+
+- 实现 int/float/char 类型支持
+- 添加类型大小计算函数
+- 实现类型兼容性判断
+- 完成单元测试
+```
+
+#### 2.2 使用文件提交
+
+```powershell
+# 使用文件内容作为提交信息
+git commit -F commit_msg.txt
+
+# 验证提交信息（在 Git Bash 中查看更准确）
+git log -1
+
+# 删除临时文件
+Remove-Item commit_msg.txt
+```
+
+#### 2.3 AI 助手执行示例
+
+当 AI 助手需要提交时，应该：
+
+```python
+# 1. 创建提交信息文件
+write_file("commit_msg.txt", """feat: 任务描述
+
+- 详细修改1
+- 详细修改2
+""")
+
+# 2. 执行提交
+run_command("git commit -F commit_msg.txt")
+
+# 3. 验证
+run_command("git log -1 --pretty=format:'%s%n%b'")
+
+# 4. 清理
+delete_file("commit_msg.txt")
+```
+
+---
+
+### 方法三：使用 Git 编辑器 ⭐⭐⭐
+
+**适用场景**：需要在编辑器中仔细编写提交信息
+
+**步骤**：
+
+```bash
+# 在 Git Bash 中
+git commit
+
+# 这会打开默认编辑器（通常是 vim 或 notepad）
+# 在编辑器中输入提交信息，保存并关闭即可
+```
+
+**配置默认编辑器**：
+
+```bash
+# 设置为 VSCode
+git config --global core.editor "code --wait"
+
+# 设置为 Notepad++
+git config --global core.editor "'C:/Program Files/Notepad++/notepad++.exe' -multiInst -notabbar -nosession -noPlugin"
+
+# 设置为记事本
+git config --global core.editor "notepad"
+```
+
+---
+
+## 📝 提交信息规范
+
+### 提交类型（必须）
+
+| 类型 | 说明 | 示例 |
+|------|------|------|
+| `feat` | 新功能 | feat: 添加常量折叠优化 |
+| `fix` | 修复 Bug | fix: 修复符号表内存泄漏 |
+| `docs` | 文档更新 | docs: 更新用户指南 |
+| `style` | 代码格式（不影响功能） | style: 统一缩进格式 |
+| `refactor` | 重构 | refactor: 重构类型系统 |
+| `test` | 测试相关 | test: 添加词法分析测试 |
+| `chore` | 构建/工具 | chore: 更新 Makefile |
+| `perf` | 性能优化 | perf: 优化符号表查找速度 |
+
+### 提交信息模板
+
+#### 简单提交（单个改动）
+
+```
+<类型>: <简短描述>
+```
+
+示例：
+```
+feat: 实现浮点数词法识别
+fix: 修复除零错误检测
+docs: 添加 API 文档
+```
+
+#### 复杂提交（多个改动）
+
+```
+<类型>: <简短描述>
+
+- 详细说明1
+- 详细说明2
+- 详细说明3
+- 相关任务: TASKXXX
+```
+
+示例：
+```
+feat: 完成语义分析器实现 (TASK004)
+
+- 实现变量声明处理
+- 添加表达式类型检查
+- 实现赋值语句检查
+- 集成错误报告系统
+- 完成单元测试
+- 相关任务: TASK004
+```
+
+---
+
+## ⚙️ Git 编码配置（必须执行一次）
+
+在项目初始化后，执行以下配置（已在 TASK001 中完成）：
+
+```bash
+# 在 Git Bash 中执行
+git config --global core.quotepath false
+git config --global gui.encoding utf-8
+git config --global i18n.commit.encoding utf-8
+git config --global i18n.logoutputencoding utf-8
+```
+
+**验证配置**：
+
+```bash
+git config --global --list | grep -E "encoding|quotepath"
+```
+
+应该看到：
+```
+core.quotepath=false
+gui.encoding=utf-8
+i18n.commit.encoding=utf-8
+i18n.logoutputencoding=utf-8
+```
+
+---
+
+## 🔍 验证提交信息
+
+### 查看最新提交
+
+```bash
+# 在 Git Bash 中
+git log -1 --pretty=format:"%s%n%b"
+```
+
+### 查看提交历史
+
+```bash
+# 简洁模式
+git log --oneline -10
+
+# 详细模式
+git log -5
+
+# 图形化显示
+git log --graph --oneline --all -10
+```
+
+### 检查是否有乱码
+
+如果在 PowerShell 中看到乱码，切换到 Git Bash 查看：
+
+```bash
+# 在 Git Bash 中
+git log -1
+```
+
+---
+
+## 🛠️ 修复已有的乱码提交
+
+如果已经产生了乱码提交，可以修改：
+
+### 修改最近一次提交
+
+```bash
+# 方法1: 在 Git Bash 中直接修改
+git commit --amend
+
+# 方法2: 使用文件（在 PowerShell 中）
+# 创建正确的提交信息文件
+echo "feat: 正确的中文信息" > fix_commit.txt
+git commit --amend -F fix_commit.txt
+del fix_commit.txt
+```
+
+### 修改更早的提交（谨慎使用）
+
+```bash
+# 交互式 rebase（在 Git Bash 中）
+git rebase -i HEAD~3
+
+# 在打开的编辑器中，将要修改的提交从 'pick' 改为 'reword'
+# 保存并关闭，然后会依次打开每个要修改的提交让你编辑信息
+```
+
+**警告**：如果已经推送到远程仓库，修改历史提交需要使用 `git push --force`，这会影响其他协作者！
+
+---
+
+## 📋 提交前检查清单
+
+在提交前，确保：
+
+- [ ] 代码已经测试通过
+- [ ] 相关文档已更新
+- [ ] 遵循代码规范
+- [ ] 提交信息清晰明确
+- [ ] 使用正确的提交类型
+- [ ] **使用 Git Bash 或文件方法提交**（避免 PowerShell 直接提交）
+
+---
+
+## 🚀 推送到远程仓库
+
+### 用户规则提醒
+
+根据项目规则：
+- ✅ 可以随时提交到本地
+- ⚠️ 推送到远程前必须确认
+- ❌ 不得 `--force` 推送到 main/master 分支
+
+### 推送命令
+
+```bash
+# 在 Git Bash 中
+
+# 首次推送
+git push -u origin main
+
+# 后续推送
+git push
+
+# 查看远程状态
+git remote -v
+git status
+```
+
+---
+
+## 📊 常用 Git 命令速查
+
+### 查看状态
+
+```bash
+git status              # 查看工作区状态
+git diff                # 查看未暂存的改动
+git diff --staged       # 查看已暂存的改动
+git log --oneline -10   # 查看最近10次提交
+```
+
+### 撤销操作
+
+```bash
+git reset HEAD <file>   # 取消暂存
+git checkout -- <file>  # 撤销工作区修改
+git reset --soft HEAD~1 # 撤销最后一次提交（保留改动）
+git reset --hard HEAD~1 # 撤销最后一次提交（丢弃改动）
+```
+
+### 分支操作
+
+```bash
+git branch              # 查看本地分支
+git branch -a           # 查看所有分支
+git checkout -b dev     # 创建并切换到 dev 分支
+git merge dev           # 合并 dev 分支到当前分支
+```
+
+---
+
+## 💡 AI 助手执行规范
+
+当 AI 助手需要执行 Git 操作时：
+
+### 1. 添加文件
+
+```bash
+git add <files>
+# 或
+git add .
+```
+
+### 2. 提交（使用文件方法）
+
+```python
+# 伪代码示例
+def git_commit(message_title, message_body_lines):
+    # 创建提交信息文件
+    content = f"{message_title}\n\n"
+    for line in message_body_lines:
+        content += f"- {line}\n"
+    
+    write_file("commit_msg.txt", content)
+    
+    # 执行提交
+    run_command("git commit -F commit_msg.txt")
+    
+    # 验证
+    result = run_command("git log -1 --pretty=format:'%s'")
+    print(f"提交成功: {result}")
+    
+    # 清理
+    delete_file("commit_msg.txt")
+```
+
+### 3. 禁止操作
+
+- ❌ 不要使用 `git commit -m "中文"` 在 PowerShell 中
+- ❌ 不要使用 `git push --force` 到 main/master
+- ❌ 不要修改已推送的提交历史
+
+---
+
+## 🎯 实战示例
+
+### 示例 1: 完成一个功能
+
+```bash
+# 在 Git Bash 中
+
+# 1. 查看改动
+git status
+
+# 2. 添加文件
+git add src/semantic/type_system.c src/semantic/type_system.h
+
+# 3. 提交
+git commit -m "feat: 完成类型系统实现 (TASK002)" \
+           -m "" \
+           -m "- 实现基本类型构造函数" \
+           -m "- 添加类型大小计算" \
+           -m "- 实现类型兼容性判断" \
+           -m "- 完成单元测试"
+
+# 4. 查看提交
+git log -1
+```
+
+### 示例 2: 修复 Bug
+
+```bash
+# 在 Git Bash 中
+git add src/utils/error.c
+git commit -m "fix: 修复错误报告的内存泄漏问题"
+git log -1
+```
+
+### 示例 3: 更新文档
+
+```bash
+# 在 Git Bash 中
+git add docs/user_guide.md
+git commit -m "docs: 添加浮点数使用示例"
+git log -1
+```
+
+---
+
+## 📖 参考资源
+
+- [Git 官方文档](https://git-scm.com/doc)
+- [Conventional Commits](https://www.conventionalcommits.org/)
+- [Git 中文编码问题解决方案](https://github.com/git-guides/git-commit)
+
+---
+
+**规则版本**: v1.0  
+**最后更新**: 2025-12-16  
+**适用项目**: Mini-C 编译器  
+**维护者**: Mini-C 开发团队
+
+---
+
+## 🔔 重要提醒
+
+**每次使用 Git 时**：
+1. ✅ 优先使用 Git Bash
+2. ✅ PowerShell 必须使用文件方法
+3. ✅ 提交前验证信息
+4. ✅ 推送前征得确认
+
+**记住**：正确的工具 + 正确的方法 = 完美的提交历史！
