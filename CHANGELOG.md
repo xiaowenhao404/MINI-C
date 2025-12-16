@@ -115,21 +115,48 @@
 - 完整支持整数运算：+, -, \*, /, %（使用 eax/ebx）
 - 新增浮点运算：f+, f-, f\*, f/（使用 xmm0/xmm1/SSE 指令）
 - 新增类型转换：i2f (int→float), f2i (float→int)
-  * i2f：`cvtsi2ss xmm0, eax`
-  * f2i：`cvttss2si eax, xmm0`
+  - i2f：`cvtsi2ss xmm0, eax`
+  - f2i：`cvttss2si eax, xmm0`
 - SSE 指令集支持：movss, addss, subss, mulss, divss, cvtsi2ss, cvttss2si
 - 浮点输出：output_float（格式 %.2f）
 - 变量类型追踪：区分整数和浮点变量
 - x86-64 System V ABI 调用约定
 - 栈帧管理：自动分配和对齐
 - 测试用例：
-  * test_float_ops.c - 浮点运算综合测试
-  * test_type_conversion.c - 类型转换专项测试
-  * test_asm_generator.py - 自动化测试套件（6 个测试场景）
+  - test_float_ops.c - 浮点运算综合测试
+  - test_type_conversion.c - 类型转换专项测试
+  - test_asm_generator.py - 自动化测试套件（6 个测试场景）
 - 详细文档：
-  * docs/codegen_manual.md - 代码生成器使用手册（300+ 行）
-  * tests/codegen/README.md - 测试指南
-  * tests/codegen/example_innercode.txt - 示例中间代码
+  - docs/codegen_manual.md - 代码生成器使用手册（300+ 行）
+   - tests/codegen/README.md - 测试指南
+   - tests/codegen/example_innercode.txt - 示例中间代码
+
+#### TASK009: 错误处理系统完善 ✅
+
+- 统一错误处理系统 `src/utils/error.h` 和 `error.c`（400+ 行）
+- 错误分类：词法、语法、语义、内部错误
+- 严重级别：提示、警告、错误、致命错误
+- 格式化错误输出：`filename:line:column: error: message`
+- 彩色终端输出：
+  - 错误（红色）、警告（黄色）、提示（青色）、成功（绿色）
+  - 支持启用/禁用彩色输出
+- 错误计数和阈值控制：
+  - 自动统计错误和警告数量
+  - 超过阈值自动停止编译
+  - 详细的编译统计输出
+- 可变参数支持：类似 printf 的格式化消息
+- 便捷宏：
+  - `SEMANTIC_ERROR` - 语义错误快速报告
+  - `SYNTAX_ERROR` - 语法错误快速报告
+  - `WARNING` - 警告快速报告
+- 完整的单元测试套件（12 个测试，100%通过）
+- 演示程序：tests/utils/error_demo.c（9 个使用场景）
+- 详细文档：docs/error_handling_guide.md（400+ 行）
+  - 快速开始指南
+  - 完整 API 文档
+  - 模块集成示例
+  - 最佳实践
+  - 输出示例
 
 ### 变更
 
@@ -179,6 +206,7 @@
 - TASK006: ✅ 常量折叠优化实现（已完成）
 - TASK007: ✅ 死代码消除优化实现（已完成）
 - TASK008: ✅ 代码生成器增强（已完成）
+- TASK009: ✅ 错误处理系统完善（已完成）
 - TASK004: 语义分析器实现
 - TASK005: 中间代码生成器重构
 - TASK006: 常量折叠优化实现
