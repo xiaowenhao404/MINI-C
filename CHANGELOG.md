@@ -158,6 +158,36 @@
   - 最佳实践
   - 输出示例
 
+#### TASK010: 测试框架搭建 ✅
+
+- 自动化测试框架 `scripts/test_runner.py`（310+ 行）
+- 10 个集成测试用例（覆盖核心功能）：
+  - test_basic.c - 基础功能（变量、运算、if语句）
+  - test_float_ops.c - 浮点运算
+  - test_type_conversion.c - 类型转换（i2f/f2i）
+  - test_control_flow.c - 控制流（if-else、while）
+  - test_const_folding.c - 常量折叠优化
+  - test_dead_code.c - 死代码消除优化
+  - test_arithmetic.c - 算术运算（+,-,\*,/,%）
+  - test_comparison.c - 比较运算（>,<,==,!=,>=,<=）
+  - test_nested_if.c - 嵌套条件语句
+  - test_complex_expr.c - 复杂表达式
+- 测试框架功能：
+  - 自动扫描测试用例
+  - 编译和运行测试
+  - 输出比较（预期vs实际）
+  - 彩色终端输出
+  - 详细统计报告
+  - 模块化测试支持
+  - Windows/Linux 跨平台兼容
+- 测试运行结果：20/20 测试通过（100%）
+- 详细文档：tests/integration/README.md（300+ 行）
+  - 测试用例说明
+  - 运行方式
+  - 编写规范
+  - 调试技巧
+  - 贡献指南
+
 ### 变更
 
 - 无
@@ -207,6 +237,7 @@
 - TASK007: ✅ 死代码消除优化实现（已完成）
 - TASK008: ✅ 代码生成器增强（已完成）
 - TASK009: ✅ 错误处理系统完善（已完成）
+- TASK010: ✅ 测试框架搭建（已完成）
 - TASK004: 语义分析器实现
 - TASK005: 中间代码生成器重构
 - TASK006: 常量折叠优化实现
