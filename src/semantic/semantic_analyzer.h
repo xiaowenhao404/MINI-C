@@ -36,6 +36,7 @@ typedef struct SemanticAnalyzer {
     int warning_count;          // 警告计数
     const char *current_file;   // 当前分析的文件名
     bool has_main;              // 是否有main函数
+    Type *current_function_return_type;  // 当前函数返回类型（2.0版本）
 } SemanticAnalyzer;
 
 /* ==================== 语义分析器创建和销毁 ==================== */
@@ -149,6 +150,33 @@ void analyze_while_statement(SemanticAnalyzer *sa, struct Tree *while_node);
  * @param for_node for语句节点
  */
 void analyze_for_statement(SemanticAnalyzer *sa, struct Tree *for_node);
+
+/* ==================== 函数分析函数（2.0版本）==================== */
+
+/**
+ * 分析函数定义
+ * 
+ * @param sa 语义分析器指针
+ * @param func_def 函数定义节点
+ */
+void analyze_function_definition(SemanticAnalyzer *sa, struct Tree *func_def);
+
+/**
+ * 分析return语句
+ * 
+ * @param sa 语义分析器指针
+ * @param return_stmt return语句节点
+ */
+void analyze_return_statement(SemanticAnalyzer *sa, struct Tree *return_stmt);
+
+/**
+ * 分析函数调用
+ * 
+ * @param sa 语义分析器指针
+ * @param call_node 函数调用节点
+ * @return 函数返回类型
+ */
+Type* analyze_function_call(SemanticAnalyzer *sa, struct Tree *call_node);
 
 /* ==================== 类型检查辅助函数 ==================== */
 

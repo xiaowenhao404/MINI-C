@@ -1,0 +1,41 @@
+feat: 完成函数定义和调用的前端支持 (TASK205.2-5.4)
+
+子任务 5.2 - 扩展符号表支持函数符号:
+- 修改 symbol_insert() 支持 SYM_FUNCTION 类型
+- 添加 4 个函数符号辅助函数
+- 函数符号不分配栈偏移量
+- 完善函数重定义检测
+- 添加完整测试用例（6个测试）
+
+子任务 5.3 - 扩展语法分析器:
+- 在 lex.l 中添加 float 和 char 类型关键字
+- 扩展 type 规则支持 int/float/char/void
+- 添加 parameter_declaration 和 parameter_list 规则
+- 添加 function_definition 规则（4种形式）
+- 修改 project 规则支持多个函数定义
+- 扩展 postfix_expression 支持通用函数调用
+- 添加 argument_list 规则
+
+子任务 5.4 - 实现语义分析:
+- 函数定义分析（已预留实现）
+- return 语句类型检查
+- 函数调用参数检查
+- 集成 FUNC_CALL 到 analyze_expression
+- 添加集成测试用例（9个正常场景）
+
+修改的文件:
+- src/semantic/symbol_table.c/h
+- src/semantic/semantic_analyzer.c  
+- c-complier-master/lex.l
+- c-complier-master/yacc.y
+- tests/semantic/ (3个测试文件和说明)
+- tests/parser/ (测试文件和说明)
+
+测试状态:
+- 函数类型系统: 5/5 测试通过 ✓
+- 函数符号表: 6/6 测试通过 ✓  
+- 函数语法: 待编译器重新生成后测试
+- 函数语义: 待集成测试
+
+相关任务: TASK205 子任务 5.2, 5.3, 5.4
+

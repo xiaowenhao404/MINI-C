@@ -44,6 +44,7 @@ SemanticAnalyzer* semantic_analyzer_create(const char *filename) {
     sa->warning_count = 0;
     sa->current_file = filename;
     sa->has_main = false;
+    sa->current_function_return_type = NULL;  // 初始不在函数内部
     
     return sa;
 }
@@ -282,6 +283,11 @@ Type* get_node_type(SemanticAnalyzer *sa, struct Tree *node) {
 Type* analyze_expression(SemanticAnalyzer *sa, struct Tree *expr) {
     if (!expr) {
         return NULL;
+    }
+    
+    // 函数调用表达式（2.0版本）
+    if (expr->name && strcmp(expr->name, "FUNC_CALL") == 0) {
+        return analyze_function_call(sa, expr);
     }
     
     // 常量表达式
@@ -609,8 +615,16 @@ void analyze_statement(SemanticAnalyzer *sa, struct Tree *stmt) {
     
     // 根据节点名称分派到不同的处理函数
     if (stmt->name) {
+        // 函数定义（2.0版本）
+        if (strcmp(stmt->name, "FUNC_DEF") == 0) {
+            analyze_function_definition(sa, stmt);
+        }
+        // return语句（2.0版本）
+        else if (strcmp(stmt->name, "return_expression") == 0) {
+            analyze_return_statement(sa, stmt);
+        }
         // 声明语句
-        if (is_declaration_node(stmt)) {
+        else if (is_declaration_node(stmt)) {
             analyze_declaration(sa, stmt);
         }
         // 表达式语句（包括赋值）
@@ -700,5 +714,350 @@ bool analyze_program(SemanticAnalyzer *sa, struct Tree *ast) {
     
     printf("\n语义分析成功！\n");
     return true;
+}
+
+/* ==================== 函数分析函数（2.0版本）==================== */
+
+/**
+ * 从类型说明符节点获取类型
+ */
+static Type* get_type_from_specifier(Tree *type_node) {
+    if (!type_node || !type_node->content) {
+        return NULL;
+    }
+    
+    if (strcmp(type_node->content, "INT") == 0) {
+        return new_int_type();
+    } else if (strcmp(type_node->content, "FLOAT") == 0) {
+        return new_float_type();
+    } else if (strcmp(type_node->content, "CHAR") == 0) {
+        return new_char_type();
+    } else if (strcmp(type_node->content, "VOID") == 0) {
+        return new_void_type();
+    }
+    
+    return NULL;
+}
+
+/**
+ * 递归计数参数
+ */
+static int count_parameters(Tree *param_list) {
+    if (!param_list) {
+        return 0;
+    }
+    
+    if (strcmp(param_list->name, "PARAM") == 0) {
+        return 1;
+    } else if (strcmp(param_list->name, "PARAM_LIST") == 0) {
+        return count_parameters(param_list->leaves[0]) + 
+               count_parameters(param_list->leaves[1]);
+    }
+    
+    return 0;
+}
+
+/**
+ * 递归提取参数信息
+ */
+static void extract_parameters_recursive(Tree *param_list, Type **types, 
+                                         char **names, int *index) {
+    if (!param_list) {
+        return;
+    }
+    
+    if (strcmp(param_list->name, "PARAM") == 0) {
+        // 单个参数: type name
+        Type *param_type = get_type_from_specifier(param_list->leaves[0]);
+        char *param_name = strdup(param_list->leaves[1]->content);
+        
+        types[*index] = param_type;
+        names[*index] = param_name;
+        (*index)++;
+    } else if (strcmp(param_list->name, "PARAM_LIST") == 0) {
+        // 参数列表：递归处理
+        extract_parameters_recursive(param_list->leaves[0], types, names, index);
+        extract_parameters_recursive(param_list->leaves[1], types, names, index);
+    }
+}
+
+/**
+ * 提取参数列表信息
+ */
+static void extract_parameters(Tree *param_list, Type ***param_types, 
+                               char ***param_names, int *param_count) {
+    if (!param_list) {
+        *param_types = NULL;
+        *param_names = NULL;
+        *param_count = 0;
+        return;
+    }
+    
+    // 递归计数参数
+    int count = count_parameters(param_list);
+    *param_count = count;
+    
+    if (count == 0) {
+        *param_types = NULL;
+        *param_names = NULL;
+        return;
+    }
+    
+    // 分配数组
+    *param_types = (Type**)malloc(sizeof(Type*) * count);
+    *param_names = (char**)malloc(sizeof(char*) * count);
+    
+    // 递归提取参数
+    int index = 0;
+    extract_parameters_recursive(param_list, *param_types, *param_names, &index);
+}
+
+/**
+ * 分析函数定义
+ */
+void analyze_function_definition(SemanticAnalyzer *sa, Tree *func_def) {
+    if (!sa || !func_def) {
+        return;
+    }
+    
+    // 1. 提取函数信息
+    Tree *return_type_node = func_def->leaves[0];  // 返回类型
+    Tree *name_node = func_def->leaves[1];         // 函数名
+    Tree *param_list = NULL;
+    Tree *body = NULL;
+    
+    // 判断是否有参数列表
+    if (func_def->num == 5) {
+        // 有参数: type name (params) { body }
+        param_list = func_def->leaves[2];
+        body = func_def->leaves[4];  // 跳过 '{' 和 '}'
+    } else if (func_def->num == 4) {
+        // 无参数: type name () { body }
+        param_list = NULL;
+        body = func_def->leaves[3];
+    }
+    
+    // 2. 构造函数类型
+    Type *return_type = get_type_from_specifier(return_type_node);
+    if (!return_type) {
+        semantic_error(sa, func_def->line, "无效的返回类型");
+        return;
+    }
+    
+    // 提取参数类型
+    Type **param_types = NULL;
+    char **param_names = NULL;
+    int param_count = 0;
+    
+    if (param_list) {
+        extract_parameters(param_list, &param_types, &param_names, &param_count);
+    }
+    
+    Type *func_type = new_function_type(return_type, param_types, param_count);
+    
+    // 3. 插入函数符号到全局作用域
+    Symbol *func_sym = symbol_insert(sa->symbol_table, name_node->content, 
+                                     func_type, func_def->line);
+    if (!func_sym) {
+        semantic_error(sa, func_def->line, 
+                      "函数 '%s' 重定义", name_node->content);
+        // 清理并返回
+        if (param_types) free(param_types);
+        if (param_names) {
+            for (int i = 0; i < param_count; i++) {
+                if (param_names[i]) free(param_names[i]);
+            }
+            free(param_names);
+        }
+        return;
+    }
+    func_sym->kind = SYM_FUNCTION;
+    
+    // 4. 记录当前函数（用于 return 语句检查）
+    Type *prev_func_ret_type = sa->current_function_return_type;
+    sa->current_function_return_type = return_type;
+    
+    // 5. 进入函数作用域
+    enter_scope(sa->symbol_table);
+    
+    // 6. 插入参数符号到函数作用域
+    for (int i = 0; i < param_count; i++) {
+        Symbol *param_sym = symbol_insert(sa->symbol_table, param_names[i],
+                                          param_types[i], func_def->line);
+        if (!param_sym) {
+            semantic_error(sa, func_def->line,
+                          "参数 '%s' 重复定义", param_names[i]);
+        } else {
+            param_sym->kind = SYM_VARIABLE;
+            param_sym->is_initialized = true;  // 参数视为已初始化
+        }
+    }
+    
+    // 7. 分析函数体
+    if (body) {
+        analyze_statement(sa, body);
+    }
+    
+    // 8. 退出函数作用域
+    exit_scope(sa->symbol_table);
+    
+    // 9. 恢复当前函数返回类型
+    sa->current_function_return_type = prev_func_ret_type;
+    
+    // 10. 清理临时数组
+    if (param_types) free(param_types);
+    if (param_names) {
+        for (int i = 0; i < param_count; i++) {
+            if (param_names[i]) free(param_names[i]);
+        }
+        free(param_names);
+    }
+}
+
+/**
+ * 分析 return 语句
+ */
+void analyze_return_statement(SemanticAnalyzer *sa, Tree *return_stmt) {
+    if (!sa || !return_stmt) {
+        return;
+    }
+    
+    // 检查是否在函数内部
+    if (!sa->current_function_return_type) {
+        semantic_error(sa, return_stmt->line, 
+                      "return 语句只能在函数内部使用");
+        return;
+    }
+    
+    // 检查是否有返回值
+    if (return_stmt->num > 0 && return_stmt->leaves[0]) {
+        // 有返回值
+        Tree *return_expr = return_stmt->leaves[0];
+        Type *return_type = analyze_expression(sa, return_expr);
+        
+        if (!return_type) {
+            semantic_error(sa, return_stmt->line, "无法确定返回表达式的类型");
+            return;
+        }
+        
+        // 检查返回值类型是否匹配
+        if (!type_compatible(return_type, sa->current_function_return_type)) {
+            semantic_error(sa, return_stmt->line,
+                          "返回类型不匹配：期望 %s，实际 %s",
+                          type_to_string(sa->current_function_return_type),
+                          type_to_string(return_type));
+        }
+    } else {
+        // 无返回值（return;）
+        if (sa->current_function_return_type->kind != TYPE_VOID) {
+            semantic_error(sa, return_stmt->line,
+                          "函数应返回 %s 类型的值",
+                          type_to_string(sa->current_function_return_type));
+        }
+    }
+}
+
+/**
+ * 计数实参
+ */
+static int count_arguments(Tree *arg_list) {
+    if (!arg_list) {
+        return 0;
+    }
+    
+    if (strcmp(arg_list->name, "ARG_LIST") == 0) {
+        return count_arguments(arg_list->leaves[0]) + 1;
+    }
+    
+    return 1;  // 单个参数
+}
+
+/**
+ * 提取实参类型
+ */
+static void extract_argument_types(SemanticAnalyzer *sa, Tree *arg_list, 
+                                    Type **types, int *index) {
+    if (!arg_list) {
+        return;
+    }
+    
+    if (strcmp(arg_list->name, "ARG_LIST") == 0) {
+        // 递归处理参数列表
+        extract_argument_types(sa, arg_list->leaves[0], types, index);
+        
+        // 分析当前参数
+        int current_index = *index;
+        types[current_index] = analyze_expression(sa, arg_list->leaves[1]);
+        (*index)++;
+    } else {
+        // 单个参数
+        types[*index] = analyze_expression(sa, arg_list);
+        (*index)++;
+    }
+}
+
+/**
+ * 分析函数调用
+ */
+Type* analyze_function_call(SemanticAnalyzer *sa, Tree *call_node) {
+    if (!sa || !call_node) {
+        return NULL;
+    }
+    
+    // call_node 结构: FUNC_CALL(ID, ARG_LIST) 或 FUNC_CALL(ID)
+    Tree *func_name_node = call_node->leaves[0];
+    Tree *arg_list = (call_node->num > 1) ? call_node->leaves[1] : NULL;
+    
+    // 1. 查找函数符号
+    Symbol *func_sym = symbol_lookup(sa->symbol_table, func_name_node->content);
+    if (!func_sym) {
+        semantic_error(sa, call_node->line, 
+                      "未定义的函数 '%s'", func_name_node->content);
+        return NULL;
+    }
+    
+    if (func_sym->kind != SYM_FUNCTION) {
+        semantic_error(sa, call_node->line,
+                      "'%s' 不是函数", func_name_node->content);
+        return NULL;
+    }
+    
+    Type *func_type = func_sym->type;
+    
+    // 2. 检查参数数量
+    int arg_count = count_arguments(arg_list);
+    if (arg_count != func_type->param_count) {
+        semantic_error(sa, call_node->line,
+                      "函数 '%s' 需要 %d 个参数，但提供了 %d 个",
+                      func_name_node->content, 
+                      func_type->param_count, 
+                      arg_count);
+        return func_type->return_type;  // 返回期望的类型，继续分析
+    }
+    
+    // 3. 检查参数类型
+    if (arg_list && arg_count > 0) {
+        Type **arg_types = (Type**)malloc(sizeof(Type*) * arg_count);
+        int index = 0;
+        extract_argument_types(sa, arg_list, arg_types, &index);
+        
+        for (int i = 0; i < arg_count; i++) {
+            Type *param_type = func_type->param_types[i];
+            Type *arg_type = arg_types[i];
+            
+            if (arg_type && param_type && !type_compatible(arg_type, param_type)) {
+                semantic_error(sa, call_node->line,
+                              "参数 %d 类型不匹配：期望 %s，实际 %s",
+                              i + 1,
+                              type_to_string(param_type),
+                              type_to_string(arg_type));
+            }
+        }
+        
+        free(arg_types);
+    }
+    
+    // 4. 返回函数返回类型
+    return func_type->return_type;
 }
 
