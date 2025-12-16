@@ -1,0 +1,67 @@
+# Mini-C 编译器 .gitignore
+
+# 编译器生成的中间文件
+*.o
+*.out
+*.exe
+*.tab.*
+lex.yy.c
+compiler
+
+# 编译输出目录和文件
+output/
+Lexical
+Grammatical
+Innercode
+assembly.asm
+*.asm
+
+# 测试生成的可执行文件
+test
+test.o
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# IDE 配置
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# 其他临时文件
+*.log
+*.tmp
+.cache/
+
+# 构建产物
+build/
+dist/
+*.egg-info/
+
+# 调试文件
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# Flex/Bison 生成文件
+yacc.tab.c
+yacc.tab.h
+lex.yy.c
+y.tab.c
+y.tab.h
+
+# NASM 中间文件
+*.lst
+
+# Backup files
+*.bak
+*.orig
+
