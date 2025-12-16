@@ -191,6 +191,37 @@ void translate_return_statement(IRBuilder *builder, struct Tree *return_stmt);
  */
 char* translate_array_access(IRBuilder *builder, struct Tree *access);
 
+/* ==================== 指针翻译（2.0版本）==================== */
+
+/**
+ * 翻译取地址表达式
+ * 
+ * @param builder IR构建器指针
+ * @param addr_of 取地址 AST 节点
+ * @return 存储指针值的临时变量名
+ */
+char* translate_addr_of(IRBuilder *builder, struct Tree *addr_of);
+
+/**
+ * 翻译解引用表达式
+ * 
+ * @param builder IR构建器指针
+ * @param deref 解引用 AST 节点
+ * @return 存储解引用值的临时变量名
+ */
+char* translate_deref(IRBuilder *builder, struct Tree *deref);
+
+/* ==================== 结构体翻译（2.0版本）==================== */
+
+/**
+ * 翻译结构体成员访问表达式
+ * 
+ * @param builder IR构建器指针
+ * @param access 成员访问 AST 节点
+ * @return 存储成员值的临时变量名
+ */
+char* translate_struct_member_access(IRBuilder *builder, struct Tree *access);
+
 /* ==================== 输出 IR ==================== */
 
 /**

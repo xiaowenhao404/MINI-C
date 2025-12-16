@@ -44,6 +44,7 @@ goto    	{ yylval.tree = terminator("GOTO", yylineno); return GOTO;}
 int			{ yylval.tree = terminator("INT", yylineno); return INT;}
 float		{ yylval.tree = terminator("FLOAT", yylineno); return FLOAT;}
 char		{ yylval.tree = terminator("CHAR", yylineno); return CHAR;}
+struct		{ yylval.tree = terminator("STRUCT", yylineno); return STRUCT;}
 input_int   { yylval.tree = terminator("INPUT", yylineno); return INPUT;}
 output_int  { yylval.tree = terminator("OUTPUT", yylineno);return OUTPUT;}
 

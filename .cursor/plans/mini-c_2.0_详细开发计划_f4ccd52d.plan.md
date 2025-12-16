@@ -7,7 +7,7 @@ todos:
     status: completed
   - id: task206
     content: 实现函数参数和返回值优化
-    status: pending
+    status: completed
     dependencies:
       - task205
   - id: task201
@@ -22,27 +22,27 @@ todos:
       - task201
   - id: task203
     content: 实现指针基础支持
-    status: pending
+    status: completed
     dependencies:
       - task201
   - id: task204
     content: 实现指针运算和解引用
-    status: pending
+    status: completed
     dependencies:
       - task203
   - id: task207
     content: 实现结构体定义
-    status: pending
+    status: completed
     dependencies:
       - task203
   - id: task208
     content: 实现结构体成员访问
-    status: pending
+    status: completed
     dependencies:
       - task207
   - id: task209
     content: 实现控制流图(CFG)构建
-    status: pending
+    status: completed
     dependencies:
       - task206
       - task202
@@ -50,17 +50,17 @@ todos:
       - task208
   - id: task210
     content: 实现活性分析算法
-    status: pending
+    status: completed
     dependencies:
       - task209
   - id: task211
     content: 实现栈槽复用优化
-    status: pending
+    status: completed
     dependencies:
       - task210
   - id: task212
     content: 2.0版本测试和发布
-    status: pending
+    status: completed
     dependencies:
       - task211
 ---
@@ -103,36 +103,36 @@ todos:
 #### 子任务清单
 
 - **5.1 扩展类型系统支持函数类型**
-                                                                                                                                - 实现 `new_function_type(Type *return_type, Type **param_types, int param_count)`
-                                                                                                                                - 实现函数类型比较 `type_equal()` 的函数类型分支
-                                                                                                                                - 实现函数签名字符串化（用于错误报告）
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - 实现 `new_function_type(Type *return_type, Type **param_types, int param_count)`
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - 实现函数类型比较 `type_equal()` 的函数类型分支
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - 实现函数签名字符串化（用于错误报告）
 
 - **5.2 扩展符号表支持函数符号**
-                                                                                                                                - 修改 `symbol_insert()` 支持 `SYM_FUNCTION`
-                                                                                                                                - 为函数符号添加参数列表信息
-                                                                                                                                - 实现函数重载检测（参数不同）
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - 修改 `symbol_insert()` 支持 `SYM_FUNCTION`
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - 为函数符号添加参数列表信息
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - 实现函数重载检测（参数不同）
 
 - **5.3 扩展语法分析器**
-                                                                                                                                - 在 yacc.y 添加函数定义规则：`function_definition`
-                                                                                                                                - 添加参数列表规则：`parameter_list`, `parameter_declaration`
-                                                                                                                                - 添加 return 语句规则
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - 在 yacc.y 添加函数定义规则：`function_definition`
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - 添加参数列表规则：`parameter_list`, `parameter_declaration`
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - 添加 return 语句规则
 
 - **5.4 实现语义分析**
-                                                                                                                                - 函数定义：插入函数符号到符号表
-                                                                                                                                - 参数处理：进入函数作用域，插入参数符号
-                                                                                                                                - return 语句：检查返回类型匹配
-                                                                                                                                - 函数调用：参数数量和类型检查
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - 函数定义：插入函数符号到符号表
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - 参数处理：进入函数作用域，插入参数符号
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - return 语句：检查返回类型匹配
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - 函数调用：参数数量和类型检查
 
 - **5.5 扩展 IR 指令**
-                                                                                                                                - 完善 `IR_PARAM`, `IR_CALL`, `IR_RETURN`
-                                                                                                                                - 添加 `IR_FUNC_BEGIN`, `IR_FUNC_END` 标记函数边界
-                                                                                                                                - 实现函数调用的参数传递序列
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - 完善 `IR_PARAM`, `IR_CALL`, `IR_RETURN`
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - 添加 `IR_FUNC_BEGIN`, `IR_FUNC_END` 标记函数边界
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - 实现函数调用的参数传递序列
 
 - **5.6 扩展代码生成**
-                                                                                                                                - 函数序言和尾声（prologue/epilogue）
-                                                                                                                                - 参数传递（遵循 System V ABI：rdi, rsi, rdx, rcx, r8, r9）
-                                                                                                                                - 返回值处理（rax 或 xmm0）
-                                                                                                                                - 调用约定（栈对齐到16字节）
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - 函数序言和尾声（prologue/epilogue）
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - 参数传递（遵循 System V ABI：rdi, rsi, rdx, rcx, r8, r9）
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - 返回值处理（rax 或 xmm0）
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - 调用约定（栈对齐到16字节）
 
 #### AI助手提示词
 

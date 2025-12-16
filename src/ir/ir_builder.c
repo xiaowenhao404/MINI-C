@@ -177,6 +177,22 @@ char* translate_expression(IRBuilder *builder, struct Tree *expr, Type *expr_typ
         return translate_array_access(builder, expr);
     }
     
+    // 取地址表达式（2.0版本）
+    if (expr->name && strcmp(expr->name, "ADDR_OF") == 0) {
+        return translate_addr_of(builder, expr);
+    }
+    
+    // 解引用表达式（2.0版本）
+    if (expr->name && strcmp(expr->name, "DEREF") == 0) {
+        return translate_deref(builder, expr);
+    }
+    
+    // 结构体成员访问表达式（2.0版本）
+    if (expr->name && (strcmp(expr->name, "MEMBER_ACCESS") == 0 ||
+                       strcmp(expr->name, "PTR_MEMBER_ACCESS") == 0)) {
+        return translate_struct_member_access(builder, expr);
+    }
+    
     // 常量表达式：INT10, INT8, INT16
     if (expr->name && 
         (strcmp(expr->name, "INT10") == 0 ||
@@ -199,6 +215,126 @@ char* translate_expression(IRBuilder *builder, struct Tree *expr, Type *expr_typ
             strcmp(expr->name, "equality_expression") == 0) {
             
             // leaves[0]: 左操作数, leaves[1]: 运算符, leaves[2]: 右操作数
+            Tree *op_node = expr->leaves[1];
+            const char *op_str = (op_node && op_node->content) ? op_node->content : "";
+            
+            // ==================== 指针算术运算（2.0版本）====================
+            // 检查是否为指针算术：ptr + n, n + ptr, ptr - n, ptr1 - ptr2
+            
+            // 获取操作数类型（简化：通过符号表查找）
+            Tree *left_node = expr->leaves[0];
+            Tree *right_node = expr->leaves[2];
+            
+            // 尝试检测指针类型（通过变量名查找符号表）
+            bool left_is_ptr = false, right_is_ptr = false;
+            int element_size = 4;  // 默认元素大小（int）
+            
+            if (left_node && left_node->name && strcmp(left_node->name, "ID") == 0) {
+                Symbol *sym = symbol_lookup(builder->symbol_table, left_node->content);
+                if (sym && sym->type->kind == TYPE_POINTER) {
+                    left_is_ptr = true;
+                    element_size = sym->type->base->size;
+                }
+            }
+            
+            if (right_node && right_node->name && strcmp(right_node->name, "ID") == 0) {
+                Symbol *sym = symbol_lookup(builder->symbol_table, right_node->content);
+                if (sym && sym->type->kind == TYPE_POINTER) {
+                    right_is_ptr = true;
+                    if (!left_is_ptr) {
+                        element_size = sym->type->base->size;
+                    }
+                }
+            }
+            
+            // 处理指针算术
+            if ((strcmp(op_str, "+") == 0 || strcmp(op_str, "-") == 0) &&
+                (left_is_ptr || right_is_ptr)) {
+                
+                char *left = translate_expression(builder, left_node, NULL);
+                char *right = translate_expression(builder, right_node, NULL);
+                
+                if (!left || !right) {
+                    if (left) free(left);
+                    if (right) free(right);
+                    return NULL;
+                }
+                
+                // 情况1: 指针 + 整数 或 整数 + 指针
+                if (strcmp(op_str, "+") == 0 && (left_is_ptr || right_is_ptr) && 
+                    !(left_is_ptr && right_is_ptr)) {
+                    // 确定哪个是指针，哪个是整数
+                    char *ptr = left_is_ptr ? left : right;
+                    char *offset = left_is_ptr ? right : left;
+                    
+                    // 1. 将偏移量乘以元素大小
+                    char *byte_offset = new_temp(builder);
+                    char size_str[32];
+                    snprintf(size_str, sizeof(size_str), "%d", element_size);
+                    IRInstruction *mul_inst = ir_instruction_create(IR_MUL, offset, size_str, byte_offset);
+                    emit(builder, mul_inst);
+                    
+                    // 2. 指针加偏移
+                    char *result = new_temp(builder);
+                    IRInstruction *add_inst = ir_instruction_create(IR_ADD, ptr, byte_offset, result);
+                    emit(builder, add_inst);
+                    
+                    free(left);
+                    free(right);
+                    free(byte_offset);
+                    
+                    return result;
+                }
+                
+                // 情况2: 指针 - 整数
+                if (strcmp(op_str, "-") == 0 && left_is_ptr && !right_is_ptr) {
+                    // 1. 将偏移量乘以元素大小
+                    char *byte_offset = new_temp(builder);
+                    char size_str[32];
+                    snprintf(size_str, sizeof(size_str), "%d", element_size);
+                    IRInstruction *mul_inst = ir_instruction_create(IR_MUL, right, size_str, byte_offset);
+                    emit(builder, mul_inst);
+                    
+                    // 2. 指针减偏移
+                    char *result = new_temp(builder);
+                    IRInstruction *sub_inst = ir_instruction_create(IR_SUB, left, byte_offset, result);
+                    emit(builder, sub_inst);
+                    
+                    free(left);
+                    free(right);
+                    free(byte_offset);
+                    
+                    return result;
+                }
+                
+                // 情况3: 指针 - 指针（返回元素个数差）
+                if (strcmp(op_str, "-") == 0 && left_is_ptr && right_is_ptr) {
+                    // 1. 计算字节差
+                    char *byte_diff = new_temp(builder);
+                    IRInstruction *sub_inst = ir_instruction_create(IR_SUB, left, right, byte_diff);
+                    emit(builder, sub_inst);
+                    
+                    // 2. 除以元素大小得到元素个数
+                    char *result = new_temp(builder);
+                    char size_str[32];
+                    snprintf(size_str, sizeof(size_str), "%d", element_size);
+                    IRInstruction *div_inst = ir_instruction_create(IR_DIV, byte_diff, size_str, result);
+                    emit(builder, div_inst);
+                    
+                    free(left);
+                    free(right);
+                    free(byte_diff);
+                    
+                    return result;
+                }
+                
+                // 其他情况，回退到普通处理
+                free(left);
+                free(right);
+            }
+            
+            // ==================== 普通二元运算 ====================
+            
             char *left = translate_expression(builder, expr->leaves[0], NULL);
             char *right = translate_expression(builder, expr->leaves[2], NULL);
             
@@ -213,26 +349,25 @@ char* translate_expression(IRBuilder *builder, struct Tree *expr, Type *expr_typ
             
             // 确定操作码
             IROpcode op = IR_ADD;  // 默认
-            Tree *op_node = expr->leaves[1];
             if (op_node && op_node->content) {
-                const char *op_str = op_node->content;
+                const char *op_str2 = op_node->content;
                 
                 // 算术运算
-                if (strcmp(op_str, "+") == 0) op = IR_ADD;
-                else if (strcmp(op_str, "-") == 0) op = IR_SUB;
-                else if (strcmp(op_str, "*") == 0) op = IR_MUL;
-                else if (strcmp(op_str, "/") == 0) op = IR_DIV;
-                else if (strcmp(op_str, "%") == 0) op = IR_MOD;
+                if (strcmp(op_str2, "+") == 0) op = IR_ADD;
+                else if (strcmp(op_str2, "-") == 0) op = IR_SUB;
+                else if (strcmp(op_str2, "*") == 0) op = IR_MUL;
+                else if (strcmp(op_str2, "/") == 0) op = IR_DIV;
+                else if (strcmp(op_str2, "%") == 0) op = IR_MOD;
                 // 关系运算
-                else if (strcmp(op_str, "<") == 0) op = IR_LT;
-                else if (strcmp(op_str, ">") == 0) op = IR_GT;
-                else if (strcmp(op_str, "<=") == 0) op = IR_LE;
-                else if (strcmp(op_str, ">=") == 0) op = IR_GE;
-                else if (strcmp(op_str, "==") == 0) op = IR_EQ;
-                else if (strcmp(op_str, "!=") == 0) op = IR_NE;
+                else if (strcmp(op_str2, "<") == 0) op = IR_LT;
+                else if (strcmp(op_str2, ">") == 0) op = IR_GT;
+                else if (strcmp(op_str2, "<=") == 0) op = IR_LE;
+                else if (strcmp(op_str2, ">=") == 0) op = IR_GE;
+                else if (strcmp(op_str2, "==") == 0) op = IR_EQ;
+                else if (strcmp(op_str2, "!=") == 0) op = IR_NE;
                 // 逻辑运算
-                else if (strcmp(op_str, "&&") == 0) op = IR_AND;
-                else if (strcmp(op_str, "||") == 0) op = IR_OR;
+                else if (strcmp(op_str2, "&&") == 0) op = IR_AND;
+                else if (strcmp(op_str2, "||") == 0) op = IR_OR;
             }
             
             // 根据类型判断是否使用浮点指令
@@ -617,8 +752,24 @@ static int translate_call_arguments(IRBuilder *builder, Tree *arg_list) {
         count += translate_call_arguments(builder, arg_list->leaves[0]);
         
         // 处理当前参数（右边的参数）
-        char *arg_result = translate_expression(builder, arg_list->leaves[1], NULL);
+        Tree *arg_expr = arg_list->leaves[1];
+        char *arg_result = translate_expression(builder, arg_expr, NULL);
+        
         if (arg_result) {
+            // 检查参数是否为数组（2.0版本 TASK206：数组参数退化为指针）
+            // 如果参数是数组名，需要取地址
+            if (arg_expr && arg_expr->name && strcmp(arg_expr->name, "ID") == 0) {
+                Symbol *sym = symbol_lookup(builder->symbol_table, arg_expr->content);
+                if (sym && sym->type->kind == TYPE_ARRAY) {
+                    // 数组参数：生成取地址指令
+                    char *addr_temp = new_temp(builder);
+                    IRInstruction *addr_inst = ir_instruction_create(IR_ADDR, arg_result, NULL, addr_temp);
+                    emit(builder, addr_inst);
+                    free(arg_result);
+                    arg_result = addr_temp;
+                }
+            }
+            
             IRInstruction *param = ir_instruction_create(IR_PARAM, arg_result, NULL, NULL);
             emit(builder, param);
             free(arg_result);
@@ -627,7 +778,21 @@ static int translate_call_arguments(IRBuilder *builder, Tree *arg_list) {
     } else {
         // 单个参数
         char *arg_result = translate_expression(builder, arg_list, NULL);
+        
         if (arg_result) {
+            // 检查参数是否为数组（2.0版本 TASK206）
+            if (arg_list->name && strcmp(arg_list->name, "ID") == 0) {
+                Symbol *sym = symbol_lookup(builder->symbol_table, arg_list->content);
+                if (sym && sym->type->kind == TYPE_ARRAY) {
+                    // 数组参数：生成取地址指令
+                    char *addr_temp = new_temp(builder);
+                    IRInstruction *addr_inst = ir_instruction_create(IR_ADDR, arg_result, NULL, addr_temp);
+                    emit(builder, addr_inst);
+                    free(arg_result);
+                    arg_result = addr_temp;
+                }
+            }
+            
             IRInstruction *param = ir_instruction_create(IR_PARAM, arg_result, NULL, NULL);
             emit(builder, param);
             free(arg_result);
@@ -767,5 +932,175 @@ char* translate_array_access(IRBuilder *builder, Tree *access) {
     free(addr_temp);
     
     return value_temp;
+}
+
+/* ==================== 指针翻译（2.0版本）==================== */
+
+/**
+ * 翻译取地址表达式
+ * 
+ * @param builder IR构建器
+ * @param addr_of 取地址节点
+ * @return 存储指针值的临时变量名
+ */
+char* translate_addr_of(IRBuilder *builder, Tree *addr_of) {
+    if (!builder || !addr_of) {
+        return NULL;
+    }
+    
+    // ADDR_OF 结构: & expr
+    // leaves[0]: 操作数表达式（应该是变量）
+    
+    Tree *operand = addr_of->leaves[0];
+    if (!operand) {
+        return NULL;
+    }
+    
+    // 获取变量名
+    char *var_name = NULL;
+    if (operand->name && strcmp(operand->name, "ID") == 0) {
+        var_name = operand->content;
+    } else {
+        // 复杂表达式，需要先计算地址
+        // 这里简化处理，只支持变量
+        return NULL;
+    }
+    
+    // 生成取地址指令: result = &var
+    char *result = new_temp(builder);
+    IRInstruction *addr_inst = ir_instruction_create(IR_ADDR, var_name, NULL, result);
+    emit(builder, addr_inst);
+    
+    return result;
+}
+
+/**
+ * 翻译解引用表达式
+ * 
+ * @param builder IR构建器
+ * @param deref 解引用节点
+ * @return 存储解引用值的临时变量名
+ */
+char* translate_deref(IRBuilder *builder, Tree *deref) {
+    if (!builder || !deref) {
+        return NULL;
+    }
+    
+    // DEREF 结构: * expr
+    // leaves[0]: 操作数表达式（应该是指针）
+    
+    Tree *operand = deref->leaves[0];
+    if (!operand) {
+        return NULL;
+    }
+    
+    // 1. 翻译指针表达式
+    char *ptr_result = translate_expression(builder, operand, NULL);
+    if (!ptr_result) {
+        return NULL;
+    }
+    
+    // 2. 生成加载指令: result = *ptr
+    char *result = new_temp(builder);
+    IRInstruction *load_inst = ir_instruction_create(IR_LOAD, ptr_result, NULL, result);
+    emit(builder, load_inst);
+    
+    free(ptr_result);
+    
+    return result;
+}
+
+/* ==================== 结构体翻译（2.0版本）==================== */
+
+/**
+ * 翻译结构体成员访问表达式
+ * 
+ * @param builder IR构建器
+ * @param access 成员访问节点
+ * @return 存储成员值的临时变量名
+ */
+char* translate_struct_member_access(IRBuilder *builder, Tree *access) {
+    if (!builder || !access) {
+        return NULL;
+    }
+    
+    // MEMBER_ACCESS 结构: expr . ID
+    // PTR_MEMBER_ACCESS 结构: expr -> ID
+    // leaves[0]: 结构体表达式
+    // leaves[1]: 成员名 ID 节点
+    
+    Tree *struct_expr = access->leaves[0];
+    Tree *member_name_node = access->leaves[1];
+    
+    if (!struct_expr || !member_name_node) {
+        return NULL;
+    }
+    
+    char *member_name = member_name_node->content;
+    
+    // 1. 翻译结构体表达式
+    char *struct_result = translate_expression(builder, struct_expr, NULL);
+    if (!struct_result) {
+        return NULL;
+    }
+    
+    // 2. 获取结构体类型和成员信息
+    Type *struct_type = NULL;
+    bool is_pointer_access = (strcmp(access->name, "PTR_MEMBER_ACCESS") == 0);
+    
+    // 通过符号表查找类型（简化处理）
+    if (struct_expr->name && strcmp(struct_expr->name, "ID") == 0) {
+        Symbol *sym = symbol_lookup(builder->symbol_table, struct_expr->content);
+        if (sym) {
+            struct_type = sym->type;
+            if (is_pointer_access && struct_type->kind == TYPE_POINTER) {
+                struct_type = struct_type->base;
+            }
+        }
+    }
+    
+    if (!struct_type || struct_type->kind != TYPE_STRUCT) {
+        free(struct_result);
+        return NULL;
+    }
+    
+    // 3. 查找成员
+    StructMember *member = struct_find_member(struct_type, member_name);
+    if (!member) {
+        free(struct_result);
+        return NULL;
+    }
+    
+    // 4. 计算成员地址
+    char *member_addr = new_temp(builder);
+    char offset_str[32];
+    snprintf(offset_str, sizeof(offset_str), "%d", member->offset);
+    
+    // 如果是指针访问，先解引用
+    if (is_pointer_access) {
+        // ptr->member: 先加载指针值，再加偏移
+        char *base_addr = new_temp(builder);
+        IRInstruction *load_ptr = ir_instruction_create(IR_LOAD, struct_result, NULL, base_addr);
+        emit(builder, load_ptr);
+        
+        IRInstruction *add_offset = ir_instruction_create(IR_ADD, base_addr, offset_str, member_addr);
+        emit(builder, add_offset);
+        
+        free(base_addr);
+    } else {
+        // struct.member: 直接加偏移
+        IRInstruction *add_offset = ir_instruction_create(IR_ADD, struct_result, offset_str, member_addr);
+        emit(builder, add_offset);
+    }
+    
+    // 5. 加载成员值
+    char *member_value = new_temp(builder);
+    IRInstruction *load_member = ir_instruction_create(IR_LOAD, member_addr, NULL, member_value);
+    emit(builder, load_member);
+    
+    free(struct_result);
+    free(member_addr);
+    
+    return member_value;
 }
 

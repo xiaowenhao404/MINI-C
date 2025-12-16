@@ -120,6 +120,22 @@ Type* new_pointer_type(Type *base);
  */
 Type* new_function_type(Type *return_type, Type **param_types, int param_count);
 
+/**
+ * 创建结构体类型
+ * @param name 结构体名称
+ * @param members 结构体成员链表
+ * @return 结构体类型对象指针
+ */
+Type* new_struct_type(const char *name, StructMember *members);
+
+/**
+ * 查找结构体成员
+ * @param struct_type 结构体类型
+ * @param member_name 成员名称
+ * @return 成员指针，如果不存在返回 NULL
+ */
+StructMember* struct_find_member(Type *struct_type, const char *member_name);
+
 /* ==================== 类型属性查询 ==================== */
 
 /**

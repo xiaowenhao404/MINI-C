@@ -209,6 +209,77 @@ Type* new_function_type(Type *return_type, Type **param_types, int param_count) 
     return func_type;
 }
 
+/**
+ * 创建结构体类型
+ * @param name 结构体名称
+ * @param members 结构体成员链表
+ * @return 结构体类型对象指针
+ */
+Type* new_struct_type(const char *name, StructMember *members) {
+    if (!name) {
+        fprintf(stderr, "错误: 结构体名称不能为空\n");
+        return NULL;
+    }
+    
+    Type *struct_type = create_type(TYPE_STRUCT, 0);  // 大小稍后计算
+    struct_type->struct_name = strdup(name);
+    struct_type->members = members;
+    
+    // 计算结构体大小（考虑对齐）
+    int total_size = 0;
+    int max_alignment = 1;
+    
+    StructMember *current = members;
+    while (current) {
+        // 计算成员的对齐要求（x86-64 通常按类型大小对齐）
+        int alignment = current->type->size;
+        if (alignment > 8) alignment = 8;  // 最大对齐到8字节
+        
+        // 更新最大对齐
+        if (alignment > max_alignment) {
+            max_alignment = alignment;
+        }
+        
+        // 对齐当前偏移量
+        total_size = (total_size + alignment - 1) / alignment * alignment;
+        
+        // 设置成员偏移量
+        current->offset = total_size;
+        
+        // 增加大小
+        total_size += current->type->size;
+        
+        current = current->next;
+    }
+    
+    // 结构体总大小需要对齐到最大对齐要求
+    struct_type->size = (total_size + max_alignment - 1) / max_alignment * max_alignment;
+    
+    return struct_type;
+}
+
+/**
+ * 查找结构体成员
+ * @param struct_type 结构体类型
+ * @param member_name 成员名称
+ * @return 成员指针，如果不存在返回 NULL
+ */
+StructMember* struct_find_member(Type *struct_type, const char *member_name) {
+    if (!struct_type || struct_type->kind != TYPE_STRUCT || !member_name) {
+        return NULL;
+    }
+    
+    StructMember *current = struct_type->members;
+    while (current) {
+        if (current->name && strcmp(current->name, member_name) == 0) {
+            return current;
+        }
+        current = current->next;
+    }
+    
+    return NULL;
+}
+
 /* ==================== 类型属性查询 ==================== */
 
 /**

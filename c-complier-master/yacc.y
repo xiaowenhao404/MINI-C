@@ -29,7 +29,8 @@
 %token <tree> INT8 INT10 INT16
 %token <tree> ID
 %token <tree> INT FLOAT CHAR
-%token <tree> VOID MAIN RET CONST STATIC AUTO IF ELSE WHILE DO BREAK CONTINUE SWITCH CASE 
+%token <tree> VOID MAIN RET CONST STATIC AUTO IF ELSE WHILE DO BREAK CONTINUE SWITCH CASE
+%token <tree> STRUCT 
 %token <tree> DEFAULT SIZEOF TYPEDEF VOLATILE GOTO INPUT OUTPUT
 %token <tree> LE GE AND OR ADD_ASSIGN SUB_ASSIGN MUL_ASSIGN DIV_ASSIGN MOD_ASSIGN 
 %token <tree> INC DEC EQUAL NE PTR FOR STR
@@ -41,6 +42,7 @@ logical_and_expression logical_or_expression assignment_expression operate_expre
 nullable_expression while_expression for_expression funcion_expression if_expression if_identifier return_expression null unary_operator
 main_function sentence statement assignment_operator single_expression
 function_definition parameter_list parameter_declaration external_declaration argument_list assignment_expression_list
+struct_definition struct_member_list struct_member_declaration
 
 %precedence ')'
 %precedence ELSE
@@ -79,10 +81,42 @@ project:
     }
 ;
 
-/* 外部声明：可以是函数定义或main函数 */
+/* 外部声明：可以是函数定义、main函数或结构体定义 */
 external_declaration
     : function_definition
     | main_function
+    | struct_definition
+;
+
+/* 结构体定义 */
+struct_definition
+    : STRUCT ID '{' struct_member_list '}' ';'
+    {
+        $$ = createTree("STRUCT_DEF", 3, $2, $4, NULL);
+        $$->line = yylineno;
+    }
+;
+
+/* 结构体成员列表 */
+struct_member_list
+    : struct_member_declaration
+    {
+        $$ = $1;
+    }
+    | struct_member_list struct_member_declaration
+    {
+        $$ = createTree("MEMBER_LIST", 2, $1, $2);
+        $$->line = yylineno;
+    }
+;
+
+/* 结构体成员声明 */
+struct_member_declaration
+    : type ID ';'
+    {
+        $$ = createTree("MEMBER", 2, $1, $2);
+        $$->line = yylineno;
+    }
 ;
 
 main_function
@@ -156,6 +190,16 @@ postfix_expression
         $$ = createTree("FUNC_CALL", 1, $1);
         $$->line = yylineno;
     }
+    | postfix_expression '.' ID
+    {
+        $$ = createTree("MEMBER_ACCESS", 2, $1, $3);
+        $$->line = yylineno;
+    }
+    | postfix_expression PTR ID
+    {
+        $$ = createTree("PTR_MEMBER_ACCESS", 2, $1, $3);
+        $$->line = yylineno;
+    }
 ;
 
 /* 参数列表（函数调用时使用）*/
@@ -192,7 +236,13 @@ unary_expression
     | unary_operator cast_expression
     {
         if(!strcmp($1->content, "*")){
-            $$ = addDeclator("Pointer", $2, $1);
+            // 在表达式中，* 是解引用运算符
+            $$ = createTree("DEREF", 1, $2);
+            $$->line = yylineno;
+        }else if(!strcmp($1->content, "&")){
+            // & 是取地址运算符
+            $$ = createTree("ADDR_OF", 1, $2);
+            $$->line = yylineno;
         }else{
             $$ = unaryOpr("unary_expression", $1, $2);
         }
@@ -347,6 +397,20 @@ declare_expression
         putTree(hashMap, $2);
         preType = type = 0;
     }
+    | type '*' ID
+    {
+        $$ = createTree("POINTER_DECL", 2, $1, $3);
+        $$->line = yylineno;
+        putTree(hashMap, $3);
+        preType = type = 0;
+    }
+    | type '*' ID '=' operate_expression
+    {
+        $$ = createTree("POINTER_DECL_INIT", 3, $1, $3, $5);
+        $$->line = yylineno;
+        putTree(hashMap, $3);
+        preType = type = 0;
+    }
 ;
 
 /* 初始化列表（用于数组初始化）*/
@@ -469,6 +533,16 @@ parameter_declaration
     : type ID
     {
         $$ = createTree("PARAM", 2, $1, $2);
+        $$->line = yylineno;
+    }
+    | type '*' ID
+    {
+        $$ = createTree("PARAM_PTR", 2, $1, $3);
+        $$->line = yylineno;
+    }
+    | type ID '[' ']'
+    {
+        $$ = createTree("PARAM_ARRAY", 2, $1, $2);
         $$->line = yylineno;
     }
 ;
