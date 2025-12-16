@@ -84,6 +84,8 @@ const char* opcode_to_string(IROpcode op) {
         case IR_GOTO: return "goto";
         case IR_IF_FALSE: return "if";
         case IR_IF_TRUE: return "if_true";
+        case IR_FUNC_BEGIN: return "FUNC_BEGIN";
+        case IR_FUNC_END: return "FUNC_END";
         case IR_PARAM: return "arg";
         case IR_CALL: return "call";
         case IR_RETURN: return "return";
@@ -141,6 +143,16 @@ void ir_instruction_to_string(IRInstruction *inst, char *buffer, int size) {
             snprintf(buffer, size, "if %s == 0 goto %s", 
                     inst->arg1 ? inst->arg1 : "?",
                     inst->result ? inst->result : "?");
+            break;
+            
+        case IR_FUNC_BEGIN:
+            // 函数开始: "FUNC_BEGIN func_name"
+            snprintf(buffer, size, "FUNC_BEGIN %s", inst->arg1 ? inst->arg1 : "?");
+            break;
+            
+        case IR_FUNC_END:
+            // 函数结束: "FUNC_END func_name"
+            snprintf(buffer, size, "FUNC_END %s", inst->arg1 ? inst->arg1 : "?");
             break;
             
         case IR_RETURN:

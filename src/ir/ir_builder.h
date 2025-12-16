@@ -152,6 +152,34 @@ void translate_statement(IRBuilder *builder, struct Tree *stmt);
  */
 void translate_program(IRBuilder *builder, struct Tree *ast);
 
+/* ==================== 函数翻译（2.0版本）==================== */
+
+/**
+ * 翻译函数定义
+ * 
+ * @param builder IR构建器指针
+ * @param func_def 函数定义 AST 节点
+ */
+void translate_function_definition(IRBuilder *builder, struct Tree *func_def);
+
+/**
+ * 翻译函数调用表达式
+ * 
+ * @param builder IR构建器指针
+ * @param call_node 函数调用 AST 节点
+ * @param expr_type 表达式类型（可选）
+ * @return 存储结果的临时变量名
+ */
+char* translate_function_call(IRBuilder *builder, struct Tree *call_node, Type *expr_type);
+
+/**
+ * 翻译 return 语句
+ * 
+ * @param builder IR构建器指针
+ * @param return_stmt return 语句 AST 节点
+ */
+void translate_return_statement(IRBuilder *builder, struct Tree *return_stmt);
+
 /* ==================== 输出 IR ==================== */
 
 /**

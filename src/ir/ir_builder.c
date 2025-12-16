@@ -167,6 +167,11 @@ char* translate_expression(IRBuilder *builder, struct Tree *expr, Type *expr_typ
         return NULL;
     }
     
+    // 函数调用表达式（2.0版本）
+    if (expr->name && strcmp(expr->name, "FUNC_CALL") == 0) {
+        return translate_function_call(builder, expr, expr_type);
+    }
+    
     // 常量表达式：INT10, INT8, INT16
     if (expr->name && 
         (strcmp(expr->name, "INT10") == 0 ||
@@ -380,6 +385,18 @@ void translate_statement(IRBuilder *builder, struct Tree *stmt) {
         return;
     }
     
+    // 函数定义（2.0版本）
+    if (strcmp(stmt->name, "FUNC_DEF") == 0) {
+        translate_function_definition(builder, stmt);
+        return;
+    }
+    
+    // return 语句（2.0版本）
+    if (strcmp(stmt->name, "return_expression") == 0) {
+        translate_return_statement(builder, stmt);
+        return;
+    }
+    
     // 声明语句
     if (strcmp(stmt->name, "declare_expression") == 0) {
         // 如果有初始化，翻译赋值表达式
@@ -517,5 +534,169 @@ void ir_builder_output_to_file(IRBuilder *builder, const char *filename) {
  */
 int ir_builder_count(IRBuilder *builder) {
     return builder ? builder->count : 0;
+}
+
+/* ==================== 函数翻译（2.0版本）==================== */
+
+/**
+ * 翻译函数定义
+ * 
+ * @param builder IR构建器
+ * @param func_def 函数定义 AST 节点
+ */
+void translate_function_definition(IRBuilder *builder, Tree *func_def) {
+    if (!builder || !func_def) {
+        return;
+    }
+    
+    // 提取函数名（func_def->leaves[1] 是函数名节点）
+    Tree *name_node = func_def->leaves[1];
+    char *func_name = name_node->content;
+    
+    Tree *body = NULL;
+    
+    // 根据子节点数量判断是否有参数列表
+    if (func_def->num == 5) {
+        // 有参数: type name (params) { body }
+        body = func_def->leaves[3];  // 跳过 {, 取 sentence
+    } else if (func_def->num == 4) {
+        // 无参数: type name () { body }
+        body = func_def->leaves[2];  // 跳过 {, 取 sentence
+    }
+    
+    // 1. 生成函数开始标记
+    IRInstruction *begin = ir_instruction_create(IR_FUNC_BEGIN, func_name, NULL, NULL);
+    emit(builder, begin);
+    
+    // 2. 翻译函数体
+    if (body) {
+        translate_statement(builder, body);
+    }
+    
+    // 3. 生成函数结束标记
+    IRInstruction *end = ir_instruction_create(IR_FUNC_END, func_name, NULL, NULL);
+    emit(builder, end);
+}
+
+/**
+ * 递归计数参数
+ */
+static int count_call_arguments(Tree *arg_list) {
+    if (!arg_list) {
+        return 0;
+    }
+    
+    if (strcmp(arg_list->name, "ARG_LIST") == 0) {
+        return count_call_arguments(arg_list->leaves[0]) + 1;
+    }
+    
+    return 1;  // 单个参数
+}
+
+/**
+ * 递归翻译参数列表，生成 PARAM 指令
+ * 
+ * @param builder IR构建器
+ * @param arg_list 参数列表节点
+ * @return 参数数量
+ */
+static int translate_call_arguments(IRBuilder *builder, Tree *arg_list) {
+    if (!arg_list) {
+        return 0;
+    }
+    
+    int count = 0;
+    
+    if (strcmp(arg_list->name, "ARG_LIST") == 0) {
+        // 递归处理参数列表
+        count += translate_call_arguments(builder, arg_list->leaves[0]);
+        
+        // 处理当前参数（右边的参数）
+        char *arg_result = translate_expression(builder, arg_list->leaves[1], NULL);
+        if (arg_result) {
+            IRInstruction *param = ir_instruction_create(IR_PARAM, arg_result, NULL, NULL);
+            emit(builder, param);
+            free(arg_result);
+            count++;
+        }
+    } else {
+        // 单个参数
+        char *arg_result = translate_expression(builder, arg_list, NULL);
+        if (arg_result) {
+            IRInstruction *param = ir_instruction_create(IR_PARAM, arg_result, NULL, NULL);
+            emit(builder, param);
+            free(arg_result);
+            count = 1;
+        }
+    }
+    
+    return count;
+}
+
+/**
+ * 翻译函数调用表达式
+ * 
+ * @param builder IR构建器
+ * @param call_node 函数调用 AST 节点
+ * @param expr_type 表达式类型（可选）
+ * @return 存储结果的临时变量名
+ */
+char* translate_function_call(IRBuilder *builder, Tree *call_node, Type *expr_type) {
+    if (!builder || !call_node) {
+        return NULL;
+    }
+    
+    // 提取函数名和参数列表
+    // call_node->leaves[0] 是函数名 ID 节点
+    Tree *func_name_node = call_node->leaves[0];
+    char *func_name = func_name_node->content;
+    
+    Tree *arg_list = (call_node->num > 1) ? call_node->leaves[1] : NULL;
+    
+    // 1. 翻译参数表达式，为每个参数生成 PARAM 指令
+    int arg_count = 0;
+    if (arg_list) {
+        arg_count = translate_call_arguments(builder, arg_list);
+    }
+    
+    // 2. 生成 CALL 指令
+    char *result = new_temp(builder);
+    char arg_count_str[32];
+    snprintf(arg_count_str, sizeof(arg_count_str), "%d", arg_count);
+    
+    IRInstruction *call = ir_instruction_create(IR_CALL, func_name, arg_count_str, result);
+    emit(builder, call);
+    
+    return result;
+}
+
+/**
+ * 翻译 return 语句
+ * 
+ * @param builder IR构建器
+ * @param return_stmt return 语句 AST 节点
+ */
+void translate_return_statement(IRBuilder *builder, Tree *return_stmt) {
+    if (!builder || !return_stmt) {
+        return;
+    }
+    
+    // 检查是否有返回值
+    // return_expression 可能有子节点（返回值表达式）
+    if (return_stmt->num > 0 && return_stmt->leaves[0]) {
+        // 有返回值: return expr;
+        Tree *return_expr = return_stmt->leaves[0];
+        char *result = translate_expression(builder, return_expr, NULL);
+        
+        if (result) {
+            IRInstruction *ret = ir_instruction_create(IR_RETURN, result, NULL, NULL);
+            emit(builder, ret);
+            free(result);
+        }
+    } else {
+        // 无返回值: return;
+        IRInstruction *ret = ir_instruction_create(IR_RETURN, NULL, NULL, NULL);
+        emit(builder, ret);
+    }
 }
 

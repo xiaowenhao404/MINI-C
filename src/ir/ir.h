@@ -27,7 +27,8 @@ typedef enum {
     IR_ASSIGN,
     /* 控制流 */
     IR_LABEL, IR_GOTO, IR_IF_FALSE, IR_IF_TRUE,
-    /* 函数调用 */
+    /* 函数调用（2.0版本扩展）*/
+    IR_FUNC_BEGIN, IR_FUNC_END,  // 函数边界标记
     IR_PARAM, IR_CALL, IR_RETURN,
     /* 数组和指针 */
     IR_LOAD, IR_STORE, IR_ADDR
