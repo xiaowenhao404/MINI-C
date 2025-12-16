@@ -147,18 +147,24 @@ Symbol* symbol_insert(SymbolTable *st, const char *name, Type *type, int line) {
     strcpy(sym->name, name);
     
     // 设置符号属性
-    sym->kind = SYM_VARIABLE;  // 1.0版本主要是变量
     sym->type = type;
     sym->scope_level = st->scope_level;
     sym->is_global = (st->scope_level == 0);
     sym->is_initialized = false;
     sym->line = line;
     
-    // 分配栈偏移量
-    if (!sym->is_global) {
-        sym->offset = allocate_offset(st, type_size(type));
+    // 根据类型设置符号种类
+    if (type->kind == TYPE_FUNCTION) {
+        sym->kind = SYM_FUNCTION;
+        sym->offset = 0;  // 函数不需要栈偏移量
     } else {
-        sym->offset = 0;  // 全局变量不使用栈偏移
+        sym->kind = SYM_VARIABLE;
+        // 为变量分配栈空间
+        if (!sym->is_global) {
+            sym->offset = allocate_offset(st, type_size(type));
+        } else {
+            sym->offset = 0;  // 全局变量不使用栈偏移
+        }
     }
     
     // 插入哈希表
@@ -392,6 +398,70 @@ int symbol_table_count(SymbolTable *st) {
     return count;
 }
 
+/* ==================== 函数符号辅助函数（2.0版本）==================== */
+
+/**
+ * 检查符号是否为函数
+ * 
+ * @param sym 符号指针
+ * @return 是函数返回true，否则返回false
+ */
+bool symbol_is_function(Symbol *sym) {
+    return sym && sym->kind == SYM_FUNCTION;
+}
+
+/**
+ * 获取函数参数数量
+ * 
+ * @param sym 符号指针
+ * @return 参数数量，如果不是函数返回-1
+ */
+int symbol_get_param_count(Symbol *sym) {
+    if (!sym || sym->kind != SYM_FUNCTION) {
+        return -1;
+    }
+    if (!sym->type || sym->type->kind != TYPE_FUNCTION) {
+        return -1;
+    }
+    return sym->type->param_count;
+}
+
+/**
+ * 获取函数参数类型
+ * 
+ * @param sym 符号指针
+ * @param index 参数索引（从0开始）
+ * @return 参数类型，如果索引无效返回NULL
+ */
+Type* symbol_get_param_type(Symbol *sym, int index) {
+    if (!sym || sym->kind != SYM_FUNCTION) {
+        return NULL;
+    }
+    if (!sym->type || sym->type->kind != TYPE_FUNCTION) {
+        return NULL;
+    }
+    if (index < 0 || index >= sym->type->param_count) {
+        return NULL;
+    }
+    return sym->type->param_types[index];
+}
+
+/**
+ * 获取函数返回类型
+ * 
+ * @param sym 符号指针
+ * @return 返回类型，如果不是函数返回NULL
+ */
+Type* symbol_get_return_type(Symbol *sym) {
+    if (!sym || sym->kind != SYM_FUNCTION) {
+        return NULL;
+    }
+    if (!sym->type || sym->type->kind != TYPE_FUNCTION) {
+        return NULL;
+    }
+    return sym->type->return_type;
+}
+
 /**
  * 获取当前作用域的符号数量
  */
@@ -414,5 +484,69 @@ int symbol_table_count_current_scope(SymbolTable *st) {
     }
     
     return count;
+}
+
+/* ==================== 函数符号辅助函数（2.0版本）==================== */
+
+/**
+ * 检查符号是否为函数
+ * 
+ * @param sym 符号指针
+ * @return 是函数返回true，否则返回false
+ */
+bool symbol_is_function(Symbol *sym) {
+    return sym && sym->kind == SYM_FUNCTION;
+}
+
+/**
+ * 获取函数参数数量
+ * 
+ * @param sym 符号指针
+ * @return 参数数量，如果不是函数返回-1
+ */
+int symbol_get_param_count(Symbol *sym) {
+    if (!sym || sym->kind != SYM_FUNCTION) {
+        return -1;
+    }
+    if (!sym->type || sym->type->kind != TYPE_FUNCTION) {
+        return -1;
+    }
+    return sym->type->param_count;
+}
+
+/**
+ * 获取函数参数类型
+ * 
+ * @param sym 符号指针
+ * @param index 参数索引（从0开始）
+ * @return 参数类型，如果索引无效返回NULL
+ */
+Type* symbol_get_param_type(Symbol *sym, int index) {
+    if (!sym || sym->kind != SYM_FUNCTION) {
+        return NULL;
+    }
+    if (!sym->type || sym->type->kind != TYPE_FUNCTION) {
+        return NULL;
+    }
+    if (index < 0 || index >= sym->type->param_count) {
+        return NULL;
+    }
+    return sym->type->param_types[index];
+}
+
+/**
+ * 获取函数返回类型
+ * 
+ * @param sym 符号指针
+ * @return 返回类型，如果不是函数返回NULL
+ */
+Type* symbol_get_return_type(Symbol *sym) {
+    if (!sym || sym->kind != SYM_FUNCTION) {
+        return NULL;
+    }
+    if (!sym->type || sym->type->kind != TYPE_FUNCTION) {
+        return NULL;
+    }
+    return sym->type->return_type;
 }
 

@@ -201,5 +201,40 @@ int symbol_table_count(SymbolTable *st);
  */
 int symbol_table_count_current_scope(SymbolTable *st);
 
+/* ==================== 函数符号辅助函数（2.0版本）==================== */
+
+/**
+ * 检查符号是否为函数
+ * 
+ * @param sym 符号指针
+ * @return 是函数返回true，否则返回false
+ */
+bool symbol_is_function(Symbol *sym);
+
+/**
+ * 获取函数参数数量
+ * 
+ * @param sym 符号指针
+ * @return 参数数量，如果不是函数返回-1
+ */
+int symbol_get_param_count(Symbol *sym);
+
+/**
+ * 获取函数参数类型
+ * 
+ * @param sym 符号指针
+ * @param index 参数索引（从0开始）
+ * @return 参数类型，如果索引无效返回NULL
+ */
+Type* symbol_get_param_type(Symbol *sym, int index);
+
+/**
+ * 获取函数返回类型
+ * 
+ * @param sym 符号指针
+ * @return 返回类型，如果不是函数返回NULL
+ */
+Type* symbol_get_return_type(Symbol *sym);
+
 #endif /* SYMBOL_TABLE_H */
 

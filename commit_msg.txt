@@ -1,0 +1,23 @@
+feat: 扩展语法分析器支持函数定义 (TASK205.3)
+
+- 在 lex.l 中添加 float 和 char 类型关键字
+- 在 yacc.y 中添加 FLOAT 和 CHAR token 声明
+- 扩展 type 规则支持 int/float/char/void 四种类型
+- 添加 parameter_declaration 和 parameter_list 规则
+- 添加 function_definition 规则
+- 修改 project 规则支持多个函数定义
+- 添加 external_declaration 规则区分函数和 main
+- 扩展 postfix_expression 支持通用函数调用
+- 添加 argument_list 规则支持函数调用参数
+- 创建完整的函数语法测试用例
+- 添加测试说明文档
+
+功能特性:
+- 支持函数定义（有参数和无参数）
+- 支持多种返回类型（int/float/char/void）
+- 支持参数列表（逗号分隔）
+- 支持函数调用表达式
+- 支持递归函数
+- 保持与现有 main 函数的兼容性
+
+相关任务: TASK205 子任务 5.3

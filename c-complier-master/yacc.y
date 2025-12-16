@@ -28,7 +28,7 @@
 }
 %token <tree> INT8 INT10 INT16
 %token <tree> ID
-%token <tree> INT
+%token <tree> INT FLOAT CHAR
 %token <tree> VOID MAIN RET CONST STATIC AUTO IF ELSE WHILE DO BREAK CONTINUE SWITCH CASE 
 %token <tree> DEFAULT SIZEOF TYPEDEF VOLATILE GOTO INPUT OUTPUT
 %token <tree> LE GE AND OR ADD_ASSIGN SUB_ASSIGN MUL_ASSIGN DIV_ASSIGN MOD_ASSIGN 
@@ -40,6 +40,7 @@ multiplicative_expression additive_expression relational_expression equality_exp
 logical_and_expression logical_or_expression assignment_expression operate_expression declare_expression
 nullable_expression while_expression for_expression funcion_expression if_expression if_identifier return_expression null unary_operator
 main_function sentence statement assignment_operator single_expression
+function_definition parameter_list parameter_declaration external_declaration argument_list
 
 %precedence ')'
 %precedence ELSE
@@ -48,7 +49,7 @@ main_function sentence statement assignment_operator single_expression
 
 
 project:
-    main_function
+    external_declaration
     {      
         root = createTree("Project", 1, $1);
 
@@ -62,6 +63,26 @@ project:
             fprintf(outInner,"%s",root->code);
         }
     }
+    | project external_declaration
+    {
+        root = createTree("Project", 2, $1, $2);
+
+        //重新赋值行号
+        int seek=1;
+        line_count=1;
+        if(root->code){
+            while(seek){
+                seek = swap(root->code,"#",lineToString(line_count++));
+            }
+            fprintf(outInner,"%s",root->code);
+        }
+    }
+;
+
+/* 外部声明：可以是函数定义或main函数 */
+external_declaration
+    : function_definition
+    | main_function
 ;
 
 main_function
@@ -124,6 +145,29 @@ postfix_expression
     | postfix_expression DEC
     {
         $$ = createTree("postfix_expression", 2, $1, $2);
+    }
+    | ID '(' argument_list ')'
+    {
+        $$ = createTree("FUNC_CALL", 2, $1, $3);
+        $$->line = yylineno;
+    }
+    | ID '(' ')'
+    {
+        $$ = createTree("FUNC_CALL", 1, $1);
+        $$->line = yylineno;
+    }
+;
+
+/* 参数列表（函数调用时使用）*/
+argument_list
+    : operate_expression
+    {
+        $$ = $1;
+    }
+    | argument_list ',' operate_expression
+    {
+        $$ = createTree("ARG_LIST", 2, $1, $3);
+        $$->line = yylineno;
     }
 ;
 
@@ -387,10 +431,70 @@ return_expression
     }
 ;
 
+/* ==================== 函数定义规则（2.0版本）==================== */
+
+/* 参数声明 */
+parameter_declaration
+    : type ID
+    {
+        $$ = createTree("PARAM", 2, $1, $2);
+        $$->line = yylineno;
+    }
+;
+
+/* 参数列表 */
+parameter_list
+    : parameter_declaration
+    {
+        $$ = $1;
+    }
+    | parameter_list ',' parameter_declaration
+    {
+        $$ = createTree("PARAM_LIST", 2, $1, $3);
+        $$->line = yylineno;
+    }
+;
+
+/* 函数定义 */
+function_definition
+    : type ID '(' parameter_list ')' '{' sentence '}'
+    {
+        $$ = createTree("FUNC_DEF", 5, $1, $2, $4, $6, $8);
+        $$->line = yylineno;
+    }
+    | type ID '(' ')' '{' sentence '}'
+    {
+        $$ = createTree("FUNC_DEF", 4, $1, $2, $6, $7);
+        $$->line = yylineno;
+    }
+    | VOID ID '(' parameter_list ')' '{' sentence '}'
+    {
+        $$ = createTree("FUNC_DEF", 5, $1, $2, $4, $6, $8);
+        $$->line = yylineno;
+    }
+    | VOID ID '(' ')' '{' sentence '}'
+    {
+        $$ = createTree("FUNC_DEF", 4, $1, $2, $6, $7);
+        $$->line = yylineno;
+    }
+;
+
 type
     : INT {
-        // $$ = createTree("type", 1, $1);
+        $$ = createTree("type", 1, $1);
         type = INT;
+    }
+    | FLOAT {
+        $$ = createTree("type", 1, $1);
+        type = FLOAT;
+    }
+    | CHAR {
+        $$ = createTree("type", 1, $1);
+        type = CHAR;
+    }
+    | VOID {
+        $$ = createTree("type", 1, $1);
+        type = VOID;
     }
 %%
 

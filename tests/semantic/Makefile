@@ -3,23 +3,46 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c11 -g
 SRC_DIR = ../../src/semantic
-TARGET = test_type_system
 
-# 源文件
-SOURCES = test_type_system.c $(SRC_DIR)/type_system.c
-HEADERS = $(SRC_DIR)/type_system.h
+# 测试目标
+TESTS = test_type_system test_function_type test_symbol_table test_function_symbol
 
-# 编译测试程序
-$(TARGET): $(SOURCES) $(HEADERS)
-	$(CC) $(CFLAGS) -o $(TARGET) $(SOURCES)
+# 编译所有测试
+all: $(TESTS)
 
-# 运行测试
-test: $(TARGET)
-	./$(TARGET)
+# 类型系统测试
+test_type_system: test_type_system.c $(SRC_DIR)/type_system.c $(SRC_DIR)/type_system.h
+	$(CC) $(CFLAGS) -o $@ test_type_system.c $(SRC_DIR)/type_system.c
+
+# 函数类型测试
+test_function_type: test_function_type.c $(SRC_DIR)/type_system.c $(SRC_DIR)/type_system.h
+	$(CC) $(CFLAGS) -o $@ test_function_type.c $(SRC_DIR)/type_system.c
+
+# 符号表测试
+test_symbol_table: test_symbol_table.c $(SRC_DIR)/symbol_table.c $(SRC_DIR)/type_system.c
+	$(CC) $(CFLAGS) -o $@ test_symbol_table.c $(SRC_DIR)/symbol_table.c $(SRC_DIR)/type_system.c
+
+# 函数符号测试
+test_function_symbol: test_function_symbol.c $(SRC_DIR)/symbol_table.c $(SRC_DIR)/type_system.c
+	$(CC) $(CFLAGS) -o $@ test_function_symbol.c $(SRC_DIR)/symbol_table.c $(SRC_DIR)/type_system.c
+
+# 运行所有测试
+test: $(TESTS)
+	@echo "运行类型系统测试..."
+	./test_type_system
+	@echo ""
+	@echo "运行函数类型测试..."
+	./test_function_type
+	@echo ""
+	@echo "运行符号表测试..."
+	./test_symbol_table
+	@echo ""
+	@echo "运行函数符号测试..."
+	./test_function_symbol
 
 # 清理
 clean:
-	rm -f $(TARGET) $(TARGET).exe *.o
+	rm -f $(TESTS) $(addsuffix .exe,$(TESTS)) *.o
 
-.PHONY: test clean
+.PHONY: all test clean
 
