@@ -111,6 +111,15 @@ Type* new_array_type(Type *base, int length);
  */
 Type* new_pointer_type(Type *base);
 
+/**
+ * 创建函数类型
+ * @param return_type 返回类型
+ * @param param_types 参数类型数组
+ * @param param_count 参数个数
+ * @return 函数类型对象指针
+ */
+Type* new_function_type(Type *return_type, Type **param_types, int param_count);
+
 /* ==================== 类型属性查询 ==================== */
 
 /**

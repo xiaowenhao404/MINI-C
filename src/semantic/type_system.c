@@ -175,6 +175,40 @@ Type* new_pointer_type(Type *base) {
     return pointer_type;
 }
 
+/**
+ * 创建函数类型
+ * @param return_type 返回类型
+ * @param param_types 参数类型数组
+ * @param param_count 参数个数
+ * @return 函数类型对象指针
+ */
+Type* new_function_type(Type *return_type, Type **param_types, int param_count) {
+    if (!return_type) {
+        fprintf(stderr, "错误: 无效的函数返回类型\n");
+        return NULL;
+    }
+    
+    // 函数指针在x86-64架构下是8字节
+    Type *func_type = create_type(TYPE_FUNCTION, 8);
+    func_type->return_type = return_type;
+    func_type->param_count = param_count;
+    
+    // 复制参数类型数组
+    if (param_count > 0 && param_types) {
+        func_type->param_types = (Type**)malloc(sizeof(Type*) * param_count);
+        if (!func_type->param_types) {
+            fprintf(stderr, "错误: 内存分配失败\n");
+            free(func_type);
+            return NULL;
+        }
+        memcpy(func_type->param_types, param_types, sizeof(Type*) * param_count);
+    } else {
+        func_type->param_types = NULL;
+    }
+    
+    return func_type;
+}
+
 /* ==================== 类型属性查询 ==================== */
 
 /**
@@ -254,7 +288,26 @@ bool type_equal(Type *a, Type *b) {
         return type_equal(a->base, b->base);
     }
     
-    // 其他类型（结构体、函数）暂不实现
+    // 对于函数类型，需要比较返回类型和所有参数类型
+    if (a->kind == TYPE_FUNCTION) {
+        // 返回类型必须相同
+        if (!type_equal(a->return_type, b->return_type)) {
+            return false;
+        }
+        // 参数数量必须相同
+        if (a->param_count != b->param_count) {
+            return false;
+        }
+        // 每个参数类型必须相同
+        for (int i = 0; i < a->param_count; i++) {
+            if (!type_equal(a->param_types[i], b->param_types[i])) {
+                return false;
+            }
+        }
+        return true;
+    }
+    
+    // 其他类型（结构体）暂不实现
     return false;
 }
 
@@ -383,8 +436,20 @@ const char* type_to_string(Type *t) {
             return "pointer";
         case TYPE_STRUCT:
             return "struct";
-        case TYPE_FUNCTION:
-            return "function";
+        case TYPE_FUNCTION: {
+            // 动态生成函数签名字符串
+            static char func_sig[256];
+            snprintf(func_sig, sizeof(func_sig), "%s(", 
+                     type_to_string(t->return_type));
+            
+            for (int i = 0; i < t->param_count; i++) {
+                if (i > 0) strcat(func_sig, ", ");
+                strcat(func_sig, type_to_string(t->param_types[i]));
+            }
+            strcat(func_sig, ")");
+            
+            return func_sig;
+        }
         default:
             return "unknown";
     }
