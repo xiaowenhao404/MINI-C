@@ -21,6 +21,7 @@ PowerShell 的编码机制会导致中文字符乱码，必须使用以下推荐
 **优势**：完全避免编码问题，操作最简单
 
 **步骤**：
+
 1. 在项目目录右键选择 "Git Bash Here"
 2. 正常使用 Git 命令：
 
@@ -49,6 +50,7 @@ git log -1
 ```
 
 **提交信息格式规范**：
+
 ```
 <类型>: <简短描述>
 
@@ -161,16 +163,16 @@ git config --global core.editor "notepad"
 
 ### 提交类型（必须）
 
-| 类型 | 说明 | 示例 |
-|------|------|------|
-| `feat` | 新功能 | feat: 添加常量折叠优化 |
-| `fix` | 修复 Bug | fix: 修复符号表内存泄漏 |
-| `docs` | 文档更新 | docs: 更新用户指南 |
-| `style` | 代码格式（不影响功能） | style: 统一缩进格式 |
-| `refactor` | 重构 | refactor: 重构类型系统 |
-| `test` | 测试相关 | test: 添加词法分析测试 |
-| `chore` | 构建/工具 | chore: 更新 Makefile |
-| `perf` | 性能优化 | perf: 优化符号表查找速度 |
+| 类型       | 说明                   | 示例                     |
+| ---------- | ---------------------- | ------------------------ |
+| `feat`     | 新功能                 | feat: 添加常量折叠优化   |
+| `fix`      | 修复 Bug               | fix: 修复符号表内存泄漏  |
+| `docs`     | 文档更新               | docs: 更新用户指南       |
+| `style`    | 代码格式（不影响功能） | style: 统一缩进格式      |
+| `refactor` | 重构                   | refactor: 重构类型系统   |
+| `test`     | 测试相关               | test: 添加词法分析测试   |
+| `chore`    | 构建/工具              | chore: 更新 Makefile     |
+| `perf`     | 性能优化               | perf: 优化符号表查找速度 |
 
 ### 提交信息模板
 
@@ -181,6 +183,7 @@ git config --global core.editor "notepad"
 ```
 
 示例：
+
 ```
 feat: 实现浮点数词法识别
 fix: 修复除零错误检测
@@ -199,6 +202,7 @@ docs: 添加 API 文档
 ```
 
 示例：
+
 ```
 feat: 完成语义分析器实现 (TASK004)
 
@@ -231,6 +235,7 @@ git config --global --list | grep -E "encoding|quotepath"
 ```
 
 应该看到：
+
 ```
 core.quotepath=false
 gui.encoding=utf-8
@@ -322,6 +327,7 @@ git rebase -i HEAD~3
 ### 用户规则提醒
 
 根据项目规则：
+
 - ✅ 可以随时提交到本地
 - ⚠️ 推送到远程前必须确认
 - ❌ 不得 `--force` 推送到 main/master 分支
@@ -396,16 +402,16 @@ def git_commit(message_title, message_body_lines):
     content = f"{message_title}\n\n"
     for line in message_body_lines:
         content += f"- {line}\n"
-    
+
     write_file("commit_msg.txt", content)
-    
+
     # 执行提交
     run_command("git commit -F commit_msg.txt")
-    
+
     # 验证
     result = run_command("git log -1 --pretty=format:'%s'")
     print(f"提交成功: {result}")
-    
+
     # 清理
     delete_file("commit_msg.txt")
 ```
@@ -481,6 +487,7 @@ git log -1
 ## 🔔 重要提醒
 
 **每次使用 Git 时**：
+
 1. ✅ 优先使用 Git Bash
 2. ✅ PowerShell 必须使用文件方法
 3. ✅ 提交前验证信息
