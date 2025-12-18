@@ -1,0 +1,432 @@
+/**
+ * Mini-C 编译器 Web 界面样式
+ * 设计风格：macOS Big Sur
+ */
+
+/* ==================== 全局变量 ==================== */
+
+:root {
+    --bg-color: #f5f5f7;
+    --sidebar-bg: #eef0f2;
+    --border-color: #d1d1d6;
+    --accent-color: #007aff; /* macOS Blue */
+    --text-primary: #1d1d1f;
+    --text-secondary: #86868b;
+    --header-height: 50px;
+    --console-height: 150px;
+    --success-color: #28c840;
+    --warning-color: #febc2e;
+    --error-color: #ff5f57;
+}
+
+/* ==================== 基础样式 ==================== */
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, 
+                 "Helvetica Neue", Arial, "Microsoft YaHei", sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+}
+
+/* ==================== App 容器 ==================== */
+
+.app-container {
+    width: 95vw;
+    height: 92vh;
+    background-color: var(--bg-color);
+    border-radius: 12px;
+    box-shadow: 0 25px 60px rgba(0,0,0,0.25);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.5);
+}
+
+/* ==================== 顶部标题栏 ==================== */
+
+.mac-header {
+    height: var(--header-height);
+    background: linear-gradient(to bottom, #f0f0f0, #e8e8e8);
+    border-bottom: 1px solid #ccc;
+    display: flex;
+    align-items: center;
+    padding: 0 15px;
+    justify-content: space-between;
+    user-select: none;
+}
+
+.window-controls {
+    display: flex;
+    gap: 8px;
+    width: 60px;
+}
+
+.dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    transition: all 0.2s;
+}
+
+.dot:hover {
+    filter: brightness(0.9);
+}
+
+.red { 
+    background-color: #ff5f57; 
+    border: 1px solid #e0443e; 
+}
+
+.yellow { 
+    background-color: #febc2e; 
+    border: 1px solid #dba526; 
+}
+
+.green { 
+    background-color: #28c840; 
+    border: 1px solid #1aa42d; 
+}
+
+.title {
+    font-weight: 600;
+    color: #444;
+    font-size: 14px;
+    letter-spacing: 0.3px;
+}
+
+.run-btn {
+    background: linear-gradient(to bottom, var(--accent-color), #0062cc);
+    color: white;
+    border: none;
+    padding: 8px 18px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
+    font-weight: 500;
+}
+
+.run-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 122, 255, 0.4);
+}
+
+.run-btn:active {
+    transform: translateY(0);
+}
+
+.run-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.icon {
+    font-size: 14px;
+}
+
+/* ==================== 主布局 ==================== */
+
+.main-split {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+}
+
+.editor-pane {
+    flex: 1;
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    background-color: #fff;
+}
+
+.result-pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: #fff;
+}
+
+.pane-header {
+    background-color: var(--sidebar-bg);
+    padding: 10px 15px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-color);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.header-icon {
+    font-size: 14px;
+}
+
+/* ==================== CodeMirror 编辑器 ==================== */
+
+#editor-wrapper {
+    flex: 1;
+    overflow: hidden;
+    font-size: 14px;
+}
+
+.CodeMirror {
+    height: 100% !important;
+    font-family: "Consolas", "Menlo", "Monaco", "Courier New", monospace;
+    font-size: 14px;
+}
+
+.CodeMirror-linenumber {
+    color: #999;
+}
+
+/* ==================== 标签页 ==================== */
+
+.tabs {
+    display: flex;
+    background-color: var(--sidebar-bg);
+    border-bottom: 1px solid var(--border-color);
+    padding: 0 10px;
+    gap: 2px;
+}
+
+.tab-btn {
+    background: none;
+    border: none;
+    padding: 10px 16px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 500;
+}
+
+.tab-btn.active {
+    color: var(--accent-color);
+    border-bottom: 3px solid var(--accent-color);
+    background-color: rgba(0, 122, 255, 0.05);
+}
+
+.tab-btn:hover {
+    color: var(--text-primary);
+    background-color: rgba(0, 0, 0, 0.03);
+}
+
+.tab-icon {
+    font-size: 16px;
+}
+
+/* ==================== 内容显示 ==================== */
+
+.tab-content {
+    flex: 1;
+    overflow: auto;
+    padding: 15px;
+    background-color: #ffffff;
+}
+
+.code-output {
+    margin: 0;
+    font-family: "Consolas", "Menlo", "Monaco", monospace;
+    font-size: 13px;
+    color: #333;
+    white-space: pre-wrap;
+    line-height: 1.6;
+    padding: 10px;
+    background-color: #fafafa;
+    border-radius: 6px;
+}
+
+/* ==================== 控制台 ==================== */
+
+.console-pane {
+    height: var(--console-height);
+    border-top: 1px solid var(--border-color);
+    background-color: #2e3440; /* Nord Dark */
+    color: #d8dee9;
+    display: flex;
+    flex-direction: column;
+}
+
+.console-pane .pane-header {
+    background-color: #3b4252;
+    color: #eceff4;
+    border-bottom: 1px solid #4c566a;
+}
+
+#console-output {
+    flex: 1;
+    padding: 12px 15px;
+    margin: 0;
+    font-family: "Consolas", "Menlo", "Monaco", monospace;
+    font-size: 12px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    line-height: 1.5;
+}
+
+/* ==================== 加载动画 ==================== */
+
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+}
+
+.loading-spinner {
+    border: 4px solid rgba(255, 255, 255, 0.3);
+    border-top: 4px solid #fff;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.loading-text {
+    color: #fff;
+    margin-top: 15px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+/* ==================== 滚动条美化 ==================== */
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+
+/* 控制台滚动条 */
+.console-pane ::-webkit-scrollbar-thumb {
+    background: #4c566a;
+}
+
+.console-pane ::-webkit-scrollbar-thumb:hover {
+    background: #5e6a7f;
+}
+
+/* ==================== 响应式设计 ==================== */
+
+@media (max-width: 1200px) {
+    .app-container {
+        width: 98vw;
+        height: 95vh;
+    }
+}
+
+@media (max-width: 768px) {
+    .main-split {
+        flex-direction: column;
+    }
+    
+    .editor-pane,
+    .result-pane {
+        flex: 1;
+        border: none;
+        border-bottom: 1px solid var(--border-color);
+    }
+    
+    .title {
+        font-size: 12px;
+    }
+    
+    .tab-btn {
+        font-size: 11px;
+        padding: 8px 12px;
+    }
+}
+
+/* ==================== 工具提示 ==================== */
+
+.tooltip {
+    position: relative;
+}
+
+.tooltip::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: #333;
+    color: #fff;
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+    margin-bottom: 5px;
+}
+
+.tooltip:hover::after {
+    opacity: 1;
+}
+
+/* ==================== 成功/错误提示 ==================== */
+
+.status-success {
+    color: var(--success-color);
+    font-weight: 600;
+}
+
+.status-warning {
+    color: var(--warning-color);
+    font-weight: 600;
+}
+
+.status-error {
+    color: var(--error-color);
+    font-weight: 600;
+}
+

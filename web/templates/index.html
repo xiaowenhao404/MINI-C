@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mini-C Compiler IDE</title>
+    
+    <!-- 引入 CodeMirror 样式 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/nord.min.css">
+    
+    <!-- 自定义样式 -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+    <div class="app-container">
+        <!-- 顶部标题栏 -->
+        <header class="mac-header">
+            <div class="window-controls">
+                <span class="dot red"></span>
+                <span class="dot yellow"></span>
+                <span class="dot green"></span>
+            </div>
+            <div class="title">Mini-C Compiler Workspace v3.0</div>
+            <div class="actions">
+                <button id="compile-btn" class="run-btn">
+                    <span class="icon">▶</span> 编译与运行
+                </button>
+            </div>
+        </header>
+
+        <!-- 主内容区 -->
+        <main class="main-split">
+            <!-- 左侧：代码编辑器 -->
+            <section class="editor-pane">
+                <div class="pane-header">
+                    <span class="header-icon">📝</span> Source Code (temp.c)
+                </div>
+                <div id="editor-wrapper"></div>
+            </section>
+
+            <!-- 右侧：中间结果展示 -->
+            <section class="result-pane">
+                <div class="tabs">
+                    <button class="tab-btn active" onclick="switchTab('tokens')">
+                        <span class="tab-icon">🔤</span> Token 流
+                    </button>
+                    <button class="tab-btn" onclick="switchTab('ast')">
+                        <span class="tab-icon">🌳</span> 语法树 AST
+                    </button>
+                    <button class="tab-btn" onclick="switchTab('ir')">
+                        <span class="tab-icon">⚙️</span> 中间代码 IR
+                    </button>
+                    <button class="tab-btn" onclick="switchTab('asm')">
+                        <span class="tab-icon">💻</span> 汇编代码 ASM
+                    </button>
+                </div>
+                
+                <div class="tab-content">
+                    <pre id="content-display" class="code-output">// 👆 点击上方"编译与运行"按钮开始编译
+// 
+// 编译完成后，这里会显示：
+// - Token 流：词法分析结果
+// - 语法树：AST 结构
+// - 中间代码：四元式 IR
+// - 汇编代码：x86-64 汇编
+//
+// 💡 提示：可以使用左侧示例代码测试</pre>
+                </div>
+            </section>
+        </main>
+
+        <!-- 底部：控制台输出 -->
+        <footer class="console-pane">
+            <div class="pane-header">
+                <span class="header-icon">🖥️</span> Console Output / Errors
+            </div>
+            <pre id="console-output">Mini-C Compiler IDE v3.0 Ready.
+
+使用说明：
+1. 在左侧编辑器中编写或修改 C 代码
+2. 点击顶部 "编译与运行" 按钮
+3. 在右侧标签页查看编译各阶段结果
+4. 此控制台显示编译过程信息和错误
+
+注意事项：
+- 支持的类型：int, float, char
+- 支持的语句：if-else, while, for
+- 支持的函数：output_int(), output_float()
+- 代码优化：常量折叠、死代码消除自动启用</pre>
+        </footer>
+    </div>
+
+    <!-- 加载指示器 -->
+    <div id="loading-overlay" class="loading-overlay" style="display:none;">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">编译中...</div>
+    </div>
+
+    <!-- 脚本引入 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/clike/clike.min.js"></script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
+
