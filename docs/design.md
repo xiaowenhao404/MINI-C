@@ -2,238 +2,319 @@
 
 ## 1. 项目概述
 
-**项目名称**: Mini-C 编译器  
-**项目目标**: 构建一个功能完备的简易C语言编译器，支持实型数据、数组、指针、函数调用、结构体等高级特性，并实现代码优化  
+**项目名称**: Mini-C 编译器 v3.0  
+**项目目标**: 构建一个功能完备的简易 C 语言编译器，支持整数、浮点数、数组、指针、函数调用等特性  
 **目标平台**: x86-64 Linux/WSL  
-**开发语言**: C/C++, Python  
+**开发语言**: C (编译器核心), Python (汇编生成), JavaScript (Web 界面)
 
 ## 2. 总体架构
 
 ### 2.1 编译流程
 
 ```
-源代码(.c) 
+源代码(.c)
     ↓
-词法分析 (Flex) → Token流
+词法分析 (Flex) → Token 流 → Lexical 文件
     ↓
-语法分析 (Bison) → AST
+语法分析 (Bison) → AST → Grammatical 文件
     ↓
-语义分析 → 类型标注的AST
+中间代码生成 → 三地址码 → Innercode 文件
     ↓
-中间代码生成 → 四元式IR
+标签替换 → 行号跳转
     ↓
-代码优化 → 优化后的IR
+汇编代码生成 (Python) → x86-64 汇编 → assembly.asm
     ↓
-汇编代码生成 → x86-64汇编
-    ↓
-汇编和链接 → 可执行文件
+汇编和链接 (NASM + GCC) → 可执行文件
 ```
 
 ### 2.2 模块划分
 
-| 模块 | 功能 | 实现位置 |
-|------|------|---------|
-| 词法分析 | Token识别 | `src/frontend/lex.l` |
-| 语法分析 | AST构建 | `src/frontend/yacc.y` |
-| 语义分析 | 类型检查、符号表 | `src/semantic/` |
-| 中间代码 | IR生成 | `src/ir/` |
-| 代码优化 | 常量折叠、DCE、活性分析 | `src/optimization/` |
-| 代码生成 | x86-64汇编 | `src/codegen/` |
-| 工具模块 | 错误报告、内存管理 | `src/utils/` |
+| 模块         | 功能                       | 实现位置                   |
+| ------------ | -------------------------- | -------------------------- |
+| 词法分析     | Token 识别                 | `src/frontend/lex.l`       |
+| 语法分析     | AST 构建、中间代码生成     | `src/frontend/yacc.y`      |
+| AST 处理     | 树节点操作、代码合并       | `src/utils/tree.c`         |
+| 标签处理     | 符号标签替换为行号         | `src/utils/inner.c`        |
+| 符号表       | 变量和函数符号管理         | `src/utils/hashMap.c`      |
+| 汇编生成     | 三地址码转 x86-64 汇编     | `scripts/asm_generator.py` |
+| Web 界面     | 可视化编译和结果展示       | `web/app.py`               |
 
-## 3. 类型系统设计
+## 3. 类型系统
 
 ### 3.1 支持的类型
 
-- **基本类型**: void, int, float, char
-- **派生类型**: 数组、指针、结构体、函数
+| 类型     | 大小   | 说明           |
+| -------- | ------ | -------------- |
+| `int`    | 4 字节 | 32 位有符号整数 |
+| `float`  | 4 字节 | 32 位浮点数    |
+| `int*`   | 8 字节 | 64 位指针      |
+| `int[]`  | N×4 字节 | 一维整型数组   |
+| `void`   | -      | 函数返回类型   |
 
-### 3.2 类型定义
+### 3.2 类型转换
 
-```c
-typedef enum {
-    TYPE_VOID,
-    TYPE_INT,
-    TYPE_FLOAT,
-    TYPE_CHAR,
-    TYPE_ARRAY,
-    TYPE_POINTER,
-    TYPE_STRUCT,
-    TYPE_FUNCTION
-} TypeKind;
+- `int` → `float`: 隐式转换（在混合运算中）
+- 指针操作使用 64 位寄存器 (`rax`, `rbx`)
+- 整数操作使用 32 位寄存器 (`eax`, `ebx`)
 
-typedef struct Type {
-    TypeKind kind;
-    int size;
-    struct Type *base;
-    int array_len;
-    // ... 其他字段
-} Type;
-```
+## 4. 中间代码设计
 
-### 3.3 类型转换规则
-
-- int → float: 隐式转换
-- float → int: 需要显式转换
-- char → int: 隐式提升
-
-## 4. 符号表设计
-
-### 4.1 数据结构
-
-采用**链式哈希表 + 作用域栈**结构：
-
-```c
-typedef struct Symbol {
-    char *name;
-    Type *type;
-    int scope_level;
-    int offset;
-    struct Symbol *next;
-} Symbol;
-
-typedef struct SymbolTable {
-    Symbol **buckets;
-    int size;
-    int scope_level;
-} SymbolTable;
-```
-
-### 4.2 作用域管理
-
-- 全局作用域：scope_level = 0
-- 函数作用域：scope_level = 1
-- 块作用域：scope_level >= 2
-
-## 5. 中间代码设计
-
-### 5.1 四元式格式
+### 4.1 三地址码格式
 
 ```
-(op, arg1, arg2, result)
+行号: 操作
 ```
 
-示例：
+### 4.2 指令类型
+
+#### 赋值指令
+
 ```
-ADD, a, b, t0      // t0 = a + b
-JZ, t0, _, L1      // if t0 == 0 goto L1
-CALL, func, n, t1  // t1 = func(n个参数)
+1: a = 10
+2: b = a
+3: t1 = a + b
 ```
 
-### 5.2 指令集
+#### 算术运算
 
-- 算术运算：ADD, SUB, MUL, DIV, MOD
-- 浮点运算：FADD, FSUB, FMUL, FDIV
-- 类型转换：I2F, F2I
-- 控制流：LABEL, GOTO, IF_FALSE
-- 函数调用：PARAM, CALL, RETURN
+```
+t1 = a + b      // 整数加法
+t2 = x f+ y     // 浮点加法（f+, f-, f*, f/）
+```
 
-## 6. 代码优化设计
+#### 内存操作
 
-### 6.1 常量折叠
+```
+arr = alloc 20       // 分配 20 字节（5 个 int）
+store 10 t_addr      // 存储值 10 到地址 t_addr
+t1 = load t_addr     // 从地址 t_addr 加载值
+t2 = addr val        // 获取变量 val 的地址
+```
 
-编译期计算常量表达式：
-- `3 + 4 * 5` → `23`
-- `2.0 * 3.14` → `6.28`
+#### 控制流
 
-### 6.2 死代码消除
+```
+if t1 goto 15        // 条件跳转
+goto 20              // 无条件跳转
+```
 
-移除永不执行的代码：
-- `if(0) { ... }` → 删除
-- `while(0) { ... }` → 删除
+#### 函数调用
 
-### 6.3 活性分析（2.0版本）
+```
+arg t1               // 传递参数
+call output          // 调用函数
+return t1            // 返回值
+```
 
-- 构建控制流图（CFG）
-- 计算活跃变量集合
-- 栈槽复用优化
+### 4.3 标签系统
 
-## 7. 代码生成设计
+编译器使用符号标签生成中间代码，然后统一替换为行号：
 
-### 7.1 目标架构
+**生成阶段**：
+```
+@WHILE_0_START:
+if t1 goto @WHILE_0_BODY
+goto @WHILE_0_END
+@WHILE_0_BODY:
+...
+goto @WHILE_0_START
+@WHILE_0_END:
+```
+
+**替换后**：
+```
+10: if t1 goto 12
+11: goto 15
+12: ...
+14: goto 10
+15: ...
+```
+
+## 5. 汇编代码生成
+
+### 5.1 目标架构
 
 - **架构**: x86-64
 - **调用约定**: System V AMD64 ABI
-- **指令集**: 通用指令 + SSE（浮点）
+- **汇编器**: NASM
+- **链接器**: GCC
 
-### 7.2 寄存器分配
+### 5.2 寄存器分配
 
-- 整数：rax, rbx, rcx, rdx
-- 浮点：xmm0-xmm7
-- 栈帧：rbp, rsp
+| 寄存器    | 用途                        |
+| --------- | --------------------------- |
+| `rax`     | 64 位操作、地址、返回值     |
+| `eax`     | 32 位整数操作               |
+| `ebx`     | 32 位第二操作数             |
+| `xmm0-1`  | 浮点运算                    |
+| `rbp`     | 栈帧基址                    |
+| `rsp`     | 栈顶指针                    |
+| `rdi`     | 函数第一参数                |
 
-### 7.3 栈帧布局
+### 5.3 栈帧布局
 
 ```
 高地址
 +-----------------+
 | 返回地址        |
 +-----------------+
-| 保存的rbp       | <- rbp
+| 保存的 rbp      | ← rbp
 +-----------------+
-| 局部变量1       |
+| 变量 1 (8字节)  | ← rbp-8
 +-----------------+
-| 局部变量2       |
+| 变量 2 (8字节)  | ← rbp-16
 +-----------------+
 | ...             |
-+-----------------+ <- rsp
++-----------------+
+| 数组空间        |
++-----------------+ ← rsp
 低地址
 ```
 
-## 8. 错误处理设计
+**说明**：
+- 每个变量分配 8 字节（统一处理指针和整数）
+- 数组分配连续空间
+- 栈帧大小固定为 1024 字节
 
-### 8.1 错误类型
+### 5.4 指令映射
 
-- 词法错误：非法字符
-- 语法错误：语法不匹配
-- 语义错误：类型不匹配、未定义变量等
+| 中间代码       | 汇编指令                                      |
+| -------------- | --------------------------------------------- |
+| `a = 10`       | `mov eax, 10` → `mov [rbp-8], eax`            |
+| `t = a + b`    | `mov eax, [...]` → `add eax, [...]` → `mov`   |
+| `t = x f+ y`   | `movss xmm0, [...]` → `addss xmm0, xmm1`      |
+| `t = addr v`   | `lea rax, [rbp-offset]` → `mov [rbp-...], rax`|
+| `t = load p`   | `mov rax, [rbp-...]` → `mov eax, [rax]`       |
+| `store v p`    | `mov rax, [rbp-...]` → `mov [rax], ebx`       |
+| `call output`  | `mov edi, [...]` → `call printf`              |
 
-### 8.2 错误报告格式
+## 6. Web 界面架构
+
+### 6.1 技术栈
+
+- **后端**: Flask (Python)
+- **前端**: HTML + CSS + JavaScript
+- **代码编辑器**: CodeMirror
+- **执行环境**: WSL
+
+### 6.2 编译流程
 
 ```
-test.c:5:10: error: type mismatch
-    int a = 3.14;
-            ^~~~
+用户输入代码
+    ↓
+Flask 接收 POST 请求
+    ↓
+保存为临时 .c 文件
+    ↓
+调用 WSL 执行编译器
+    ↓
+调用 Python 汇编生成器
+    ↓
+调用 NASM + GCC
+    ↓
+执行程序获取输出
+    ↓
+返回各阶段结果给前端
 ```
 
-## 9. 测试策略
+### 6.3 输出展示
 
-### 9.1 单元测试
+- **词法分析**: Token 列表
+- **语法分析**: 语法树结构
+- **中间代码**: 三地址码
+- **汇编代码**: x86-64 NASM 汇编
+- **程序输出**: 运行结果
 
-- 每个模块独立测试
-- 覆盖正常情况和边界情况
+## 7. 关键实现细节
 
-### 9.2 集成测试
+### 7.1 数组实现
 
-- 完整编译流程测试
-- 运行生成的可执行文件验证
+1. **声明**: `int arr[5];` → `arr = alloc 20`
+2. **访问**: `arr[i]` → 计算偏移 `t = i * 4`，计算地址 `addr = arr + t`，加载 `val = load addr`
+3. **赋值**: `arr[i] = v` → 计算地址后 `store v addr`
 
-### 9.3 回归测试
+### 7.2 指针实现
 
-- 代码修改后重新运行所有测试
-- 确保新功能不破坏旧功能
+1. **取地址**: `&val` → `t = addr val`
+2. **解引用读**: `*ptr` → `t = load ptr`
+3. **解引用写**: `*ptr = v` → `store v ptr`
 
-## 10. 版本规划
+### 7.3 控制流实现
 
-### 1.0版本
-- 基本类型支持（int, float, char）
-- 基础优化（常量折叠、死代码消除）
-- 完善的错误报告
+使用符号标签系统解决跳转行号问题：
 
-### 2.0版本
-- 数组、指针支持
-- 函数定义和调用
-- 结构体支持
-- 活性分析优化
+```c
+// while 循环
+@WHILE_n_START:
+    条件计算
+    if 条件 goto @WHILE_n_BODY
+    goto @WHILE_n_END
+@WHILE_n_BODY:
+    循环体
+    goto @WHILE_n_START
+@WHILE_n_END:
+```
 
-### 3.0版本
-- Web可视化界面
-- FIRST/FOLLOW集计算
-- 编译过程可视化
+`replaceLabels()` 函数在代码生成后统一替换。
+
+## 8. 文件说明
+
+### 8.1 编译器源文件
+
+| 文件                    | 功能                     |
+| ----------------------- | ------------------------ |
+| `src/frontend/lex.l`    | Flex 词法规则            |
+| `src/frontend/yacc.y`   | Bison 语法规则和语义动作 |
+| `src/utils/tree.c`      | AST 节点和代码生成       |
+| `src/utils/inner.c`     | 标签替换处理             |
+| `src/utils/hashMap.c`   | 符号表实现               |
+
+### 8.2 生成文件
+
+| 文件             | 内容               |
+| ---------------- | ------------------ |
+| `Lexical`        | 词法分析 Token 流  |
+| `Grammatical`    | 语法分析树         |
+| `Innercode`      | 三地址码中间代码   |
+| `assembly.asm`   | x86-64 汇编代码    |
+
+## 9. 构建和运行
+
+### 9.1 构建编译器
+
+```bash
+make clean
+make
+```
+
+### 9.2 编译程序
+
+```bash
+./compiler source.c
+python3 scripts/asm_generator.py
+nasm -f elf64 assembly.asm -o output.o
+gcc -no-pie -o program output.o
+./program
+```
+
+### 9.3 启动 Web 界面
+
+```bash
+cd web
+python3 app.py
+# 访问 http://127.0.0.1:5000
+```
+
+## 10. 已知限制
+
+1. 不支持多维数组
+2. 不支持结构体
+3. 不支持字符串操作
+4. 不支持递归函数（栈帧管理简化）
+5. 数组大小必须是编译时常量
 
 ---
 
-**文档版本**: v1.0  
-**最后更新**: 2025-12-16  
+**文档版本**: v3.0  
+**最后更新**: 2024-12-23  
 **维护者**: Mini-C 开发团队
-

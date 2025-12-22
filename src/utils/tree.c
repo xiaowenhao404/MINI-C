@@ -194,53 +194,86 @@ Tree *unaryOpr(char *name, Tree *t1, Tree *t2)
     return t;
 }
 
-// if创建树
-Tree *ifOpr(char *name, int headline, int nextline, Tree *op, Tree *stmt)
+// if创建树 - 使用标签系统
+Tree *ifOpr(char *name, char *label_true, char *label_end, Tree *op, Tree *stmt)
 {
     Tree *t = createTree(name, 2, op, stmt);
-    t->code = mergeCode(12, op->code,
-                        "#", "if ", op->inner, " goto ", toString(headline + 2), "\n",
-                        "#", "goto ", toString(nextline), "\n",
-        stmt->code);
+    // 生成：if condition goto @label_true
+    //       goto @label_end
+    //       @label_true: ... stmt ... (标签不占用行号)
+    //       @label_end: (结束标签)
+    // 标签使用 @LABEL: 格式，不使用 # 前缀，不占用行号
+    // 参数数量: 1 + 6 + 4 + 3 + 1 + 3 = 18
+    t->code = mergeCode(18, op->code,
+                        "#", "if ", op->inner, " goto @", label_true, "\n",
+                        "#", "goto @", label_end, "\n",
+                        "@", label_true, ":", stmt->code,
+                        "@", label_end, ":");
     return t;
 }
 
-// if else创建树
-Tree *ifelseOpr(char *name, int headline, int next1, int next2, Tree *op, Tree *stmt1, Tree *stmt2)
+// if else创建树 - 使用标签系统
+Tree *ifelseOpr(char *name, char *label_true, char *label_else, char *label_end, Tree *op, Tree *stmt1, Tree *stmt2)
 {
     Tree *t = createTree(name, 3, op, stmt1, stmt2);
-    t->code = mergeCode(17, op->code,
-                        "#", "if ", op->inner, " goto ", toString(headline + 2), "\n",
-                        "#", "goto ", toString(next1 + 1), "\n",
-        stmt1->code, 
-        "#", "goto ", toString(next2), "\n",
-        stmt2->code);
+    // 生成：if condition goto @label_true
+    //       goto @label_else
+    //       @label_true: ... stmt1 ... (标签不占用行号)
+    //       goto @label_end
+    //       @label_else: ... stmt2 ... (标签不占用行号)
+    //       @label_end:
+    // 参数数量: 1 + 6 + 4 + 3 + 1 + 4 + 3 + 1 + 3 = 26
+    t->code = mergeCode(26, op->code,
+                        "#", "if ", op->inner, " goto @", label_true, "\n",
+                        "#", "goto @", label_else, "\n",
+                        "@", label_true, ":", stmt1->code,
+                        "#", "goto @", label_end, "\n",
+                        "@", label_else, ":", stmt2->code,
+                        "@", label_end, ":");
     return t;
 }
 
-// while创建树
-Tree *whileOpr(char *name, int head1, int head2, int nextline, Tree *op, Tree *stmt)
+// while创建树 - 使用标签系统
+Tree *whileOpr(char *name, char *label_start, char *label_body, char *label_end, Tree *op, Tree *stmt)
 {
     Tree *t = createTree(name, 2, op, stmt);
-    t->code = mergeCode(16, op->code,
-                        "#", "if ", op->inner, " goto ", toString(head2 + 2), "\n",
-                        "#", "goto ", toString(nextline + 1), "\n",
-        stmt->code,
-                        "#", "goto ", toString(head1), "\n");
+    // 生成：@label_start: ... condition ... (标签不占用行号)
+    //       if condition goto @label_body
+    //       goto @label_end
+    //       @label_body: ... stmt ... (标签不占用行号)
+    //       goto @label_start
+    //       @label_end:
+    // 参数数量: 3 + 1 + 6 + 4 + 3 + 1 + 4 + 3 = 25
+    t->code = mergeCode(25, "@", label_start, ":", op->code,
+                        "#", "if ", op->inner, " goto @", label_body, "\n",
+                        "#", "goto @", label_end, "\n",
+                        "@", label_body, ":", stmt->code,
+                        "#", "goto @", label_start, "\n",
+                        "@", label_end, ":");
     return t;
 }
 
-// for创建树
-Tree *forOpr(char *name, int head1, int head2, int nextline, Tree *op1, Tree *op2, Tree *op3, Tree *stmt)
+// for创建树 - 使用标签系统
+Tree *forOpr(char *name, char *label_cond, char *label_body, char *label_end, Tree *op1, Tree *op2, Tree *op3, Tree *stmt)
 {
     Tree *t = createTree(name, 3, op1, op2, op3, stmt);
-    t->code = mergeCode(18, op1->code,
-        op2->code,
-                        "#", "if ", op2->inner, " goto ", toString(head2 + 2), "\n",
-                        "#", "goto ", toString(nextline + 1), "\n",
-        stmt->code,
-        op3->code,
-                        "#", "goto ", toString(head1), "\n");
+    // 生成：... init (op1) ...
+    //       @label_cond: ... condition (op2) ... (标签不占用行号)
+    //       if condition goto @label_body
+    //       goto @label_end
+    //       @label_body: ... stmt ... (标签不占用行号)
+    //       ... update (op3) ...
+    //       goto @label_cond
+    //       @label_end:
+    // 参数数量: 1 + 3 + 1 + 6 + 4 + 3 + 1 + 1 + 4 + 3 = 27
+    t->code = mergeCode(27, op1->code,
+                        "@", label_cond, ":", op2->code,
+                        "#", "if ", op2->inner, " goto @", label_body, "\n",
+                        "#", "goto @", label_end, "\n",
+                        "@", label_body, ":", stmt->code,
+                        op3->code,
+                        "#", "goto @", label_cond, "\n",
+                        "@", label_end, ":");
     return t;
 }
 

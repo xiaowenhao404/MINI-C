@@ -22,6 +22,7 @@
     extern Node *head;
     //中间代码生成
     int line_count=1;
+    int label_id=0;  // 全局标签计数器
    
 %}
 %union{
@@ -72,6 +73,8 @@ project:
             while(seek){
                 seek = swap(root->code,"#",lineToString(line_count++));
             }
+            // 替换标签为实际行号
+            replaceLabels(root->code);
             fprintf(outInner,"%s",root->code);
         }
     }
@@ -87,6 +90,8 @@ project:
             while(seek){
                 seek = swap($2->code,"#",lineToString(line_count++));
             }
+            // 替换标签为实际行号
+            replaceLabels($2->code);
             fprintf(outInner,"%s",$2->code);
         }
     }
@@ -188,6 +193,8 @@ postfix_expression
         char* temp_offset = mergeCode(2, "t", toString(inner_count++));
         char* temp_addr = mergeCode(2, "t", toString(inner_count++));
         $$->inner = mergeCode(2, "t", toString(inner_count++));
+        // 保存地址到 content 字段，用于赋值时生成 store 指令
+        $$->content = temp_addr;
         // 19个字符串参数
         $$->code = mergeCode(19,
             $1->code ? $1->code : "",
@@ -307,21 +314,30 @@ unary_expression
     {
         if(!strcmp($1->content, "*")){
             // 在表达式中，* 是解引用运算符
+            // 注意：createTree(name, 1, $2) 返回 $2 本身，所以必须先保存 $2->inner
+            char* src_inner = $2->inner;  // 先保存原始值（指针地址）
+            char* src_code = $2->code;
             $$ = createTree("DEREF", 1, $2);
+            $$->name = "DEREF";  // 强制设置 name，因为 createTree(1) 返回原节点
             $$->line = yylineno;
+            // 保存指针地址到 content 字段，用于赋值时生成 store 指令
+            $$->content = src_inner;
             // 生成解引用的中间代码: result = load ptr
             $$->inner = mergeCode(2, "t", toString(inner_count++));
-            $$->code = mergeCode(6, $2->code ? $2->code : "",
-                "#", $$->inner, " = load ", $2->inner, "\n");
+            $$->code = mergeCode(6, src_code ? src_code : "",
+                "#", $$->inner, " = load ", src_inner, "\n");
             line_count++;
         }else if(!strcmp($1->content, "&")){
             // & 是取地址运算符
+            // 注意：createTree(name, 1, $2) 返回 $2 本身，所以必须先保存 $2->inner
+            char* src_inner = $2->inner;  // 先保存原始值
+            char* src_code = $2->code;
             $$ = createTree("ADDR_OF", 1, $2);
             $$->line = yylineno;
             // 生成取地址的中间代码: result = addr var
             $$->inner = mergeCode(2, "t", toString(inner_count++));
-            $$->code = mergeCode(6, $2->code ? $2->code : "",
-                "#", $$->inner, " = addr ", $2->inner, "\n");
+            $$->code = mergeCode(6, src_code ? src_code : "",
+                "#", $$->inner, " = addr ", src_inner, "\n");
             line_count++;
         }else{
             $$ = unaryOpr("unary_expression", $1, $2);
@@ -428,7 +444,42 @@ assignment_expression
     : logical_or_expression
     | unary_expression assignment_operator assignment_expression
     {
-        $$ = assignOpr("assignment_expression", $1, $2, $3);
+        // 检查左侧是否为数组访问或指针解引用
+        if($1->name != NULL && strcmp($1->name, "ARRAY_ACCESS") == 0) {
+            // 数组赋值: arr[i] = value
+            // $1->content 保存了地址临时变量，$1->leaves[0] 是数组，$1->leaves[1] 是索引
+            $$ = createTree("ARRAY_ASSIGN", 2, $1, $3);
+            $$->inner = $3->inner;
+            // 重新生成代码：只有地址计算 + store，不要 load
+            // 使用 leaves 中保存的数组和索引信息
+            Tree* arr = $1->leaves[0];
+            Tree* idx = $1->leaves[1];
+            char* temp_offset = mergeCode(2, "t", toString(inner_count++));
+            char* temp_addr = mergeCode(2, "t", toString(inner_count++));
+            // 20个参数
+            $$->code = mergeCode(20, 
+                arr->code ? arr->code : "",
+                idx->code ? idx->code : "",
+                $3->code ? $3->code : "",
+                "#", temp_offset, " = ", idx->inner, " * 4\n",
+                "#", temp_addr, " = ", arr->inner, " + ", temp_offset, "\n",
+                "#store ", $3->inner, " ", temp_addr, "\n");
+            line_count += 3;
+        } else if($1->name != NULL && strcmp($1->name, "DEREF") == 0) {
+            // 指针解引用赋值: *ptr = value
+            // $1->content 保存了指针变量名
+            $$ = createTree("PTR_ASSIGN", 2, $1, $3);
+            $$->inner = $3->inner;
+            // 只需要生成 store 指令，指针地址在 $1->content
+            // 6个参数
+            $$->code = mergeCode(6, 
+                $3->code ? $3->code : "",
+                "#store ", $3->inner, " ", $1->content, "\n");
+            line_count++;
+        } else {
+            // 普通赋值
+            $$ = assignOpr("assignment_expression", $1, $2, $3);
+        }
     }
 ;
 
@@ -558,24 +609,28 @@ single_expression
 if_expression 
     : if_identifier ')' statement
     {
-        int headline = $1->headline;
-        int nextline = line_count;
-        $$ = ifOpr("if_expression",headline,nextline, $1, $3);
+        // 生成唯一标签
+        char label_true[32], label_end[32];
+        sprintf(label_true, "IF_%d_TRUE", $1->headline);
+        sprintf(label_end, "IF_%d_END", $1->headline);
+        $$ = ifOpr("if_expression", label_true, label_end, $1, $3);
     }
-    | if_identifier ')' statement ELSE {$1->nextline = line_count++;} statement
+    | if_identifier ')' statement ELSE {$1->nextline = label_id;} statement
     {
-        int headline = $1->headline;
-        int next1 = $1->nextline;
-        int next2 = line_count;
-        $$ = ifelseOpr("if_else_expression",headline,next1,next2, $1, $3, $6);
+        // 生成唯一标签
+        char label_true[32], label_else[32], label_end[32];
+        sprintf(label_true, "IF_%d_TRUE", $1->headline);
+        sprintf(label_else, "IF_%d_ELSE", $1->headline);
+        sprintf(label_end, "IF_%d_END", $1->headline);
+        $$ = ifelseOpr("if_else_expression", label_true, label_else, label_end, $1, $3, $6);
     }
 ;
 if_identifier
     : IF  '(' operate_expression
     {
         $$ = $3;
-        $$->headline = line_count;
-        line_count += 2;
+        $$->headline = label_id++;  // 使用 label_id 生成唯一标识
+        line_count += 2;  // 为 if 和 goto 预留行号
     }
 ;
 
@@ -594,32 +649,36 @@ statement
 
 for_expression
     : FOR '(' nullable_expression {
-        $1->headline = line_count;
+        $1->headline = label_id++;  // 使用 label_id 生成唯一标识
     } ';'  nullable_expression ';' {
-        $6->headline = line_count;
+        // 不需要再记录 line_count
     } nullable_expression ')' {
         
     } statement
     {
-        line_count += 2;
-        int head1 = $1->headline;
-        int head2 = $6->headline;
-        int nextline = line_count++;
-        $$ = forOpr("for_expression",head1, head2, nextline, $3, $6, $9, $12);
+        // 生成唯一标签
+        char label_cond[32], label_body[32], label_end[32];
+        sprintf(label_cond, "FOR_%d_COND", $1->headline);
+        sprintf(label_body, "FOR_%d_BODY", $1->headline);
+        sprintf(label_end, "FOR_%d_END", $1->headline);
+        line_count += 3;  // 为 if, goto, goto @label_cond 预留行号
+        $$ = forOpr("for_expression", label_cond, label_body, label_end, $3, $6, $9, $12);
     }
 ;
 
 while_expression
     : WHILE {
-        $1->headline = line_count;
+        $1->headline = label_id++;  // 使用 label_id 生成唯一标识
     }'(' operate_expression ')' {
-        $4->headline = line_count;
-        line_count += 2;
+        line_count += 2;  // 为 if 和 goto 预留行号
     } statement{
-        int head1 = $1->headline;
-        int head2 = $4->headline;
-        int nextline = line_count++;
-        $$ = whileOpr("while_expression",head1, head2, nextline, $4, $7);
+        // 生成唯一标签
+        char label_start[32], label_body[32], label_end[32];
+        sprintf(label_start, "WHILE_%d_START", $1->headline);
+        sprintf(label_body, "WHILE_%d_BODY", $1->headline);
+        sprintf(label_end, "WHILE_%d_END", $1->headline);
+        line_count++;  // 为 goto @label_start 预留行号
+        $$ = whileOpr("while_expression", label_start, label_body, label_end, $4, $7);
     }
 ;
 

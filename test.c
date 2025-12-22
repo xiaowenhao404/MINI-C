@@ -1,7 +1,0 @@
-// 基本测试文件
-void main() {
-    int a = 10;
-    int b = 20;
-    int c = a + b;
-    output_int(c);
-}

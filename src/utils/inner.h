@@ -27,4 +27,7 @@ char* toString(int number);
 //替换字符串
 int swap(char *text, char *a, char *b);
 
+//替换标签为实际行号
+void replaceLabels(char *code);
+
 #endif
