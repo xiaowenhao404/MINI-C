@@ -31,8 +31,165 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     
+    // 4. 初始化可拖动分隔条
+    initResizeHandles();
+    
+    // 5. 初始化独立缩放功能
+    initIndependentZoom();
+    
     console.log('✓ Mini-C IDE 初始化完成');
 });
+
+// ==================== 可拖动分隔条功能 ====================
+
+/**
+ * 初始化可拖动分隔条
+ */
+function initResizeHandles() {
+    // 水平分隔条（调整左右面板宽度）
+    const hHandle = document.getElementById('resize-handle-h');
+    const editorPane = document.getElementById('editor-pane');
+    const resultPane = document.getElementById('result-pane');
+    
+    if (hHandle && editorPane && resultPane) {
+        let isResizingH = false;
+        
+        hHandle.addEventListener('mousedown', (e) => {
+            isResizingH = true;
+            hHandle.classList.add('active');
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+            e.preventDefault();
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizingH) return;
+            
+            const container = editorPane.parentElement;
+            const containerRect = container.getBoundingClientRect();
+            const newEditorWidth = e.clientX - containerRect.left;
+            const minWidth = 200;
+            const maxWidth = containerRect.width - minWidth - 6;
+            
+            if (newEditorWidth >= minWidth && newEditorWidth <= maxWidth) {
+                editorPane.style.flex = 'none';
+                editorPane.style.width = newEditorWidth + 'px';
+                resultPane.style.flex = '1';
+                
+                // 刷新 CodeMirror 编辑器
+                if (editor) editor.refresh();
+            }
+        });
+        
+        document.addEventListener('mouseup', () => {
+            if (isResizingH) {
+                isResizingH = false;
+                hHandle.classList.remove('active');
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+            }
+        });
+    }
+    
+    // 垂直分隔条（调整控制台高度）
+    const vHandle = document.getElementById('resize-handle-v');
+    const consolePane = document.getElementById('console-pane');
+    const mainSplit = document.querySelector('.main-split');
+    
+    if (vHandle && consolePane && mainSplit) {
+        let isResizingV = false;
+        
+        vHandle.addEventListener('mousedown', (e) => {
+            isResizingV = true;
+            vHandle.classList.add('active');
+            document.body.style.cursor = 'row-resize';
+            document.body.style.userSelect = 'none';
+            e.preventDefault();
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizingV) return;
+            
+            const appContainer = document.querySelector('.app-container');
+            const containerRect = appContainer.getBoundingClientRect();
+            const headerHeight = 50; // header height
+            const newConsoleHeight = containerRect.bottom - e.clientY;
+            const minHeight = 100;
+            const maxHeight = containerRect.height * 0.5;
+            
+            if (newConsoleHeight >= minHeight && newConsoleHeight <= maxHeight) {
+                consolePane.style.height = newConsoleHeight + 'px';
+                
+                // 刷新 CodeMirror 编辑器
+                if (editor) editor.refresh();
+            }
+        });
+        
+        document.addEventListener('mouseup', () => {
+            if (isResizingV) {
+                isResizingV = false;
+                vHandle.classList.remove('active');
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+            }
+        });
+    }
+    
+    console.log('✓ 可拖动分隔条已初始化');
+}
+
+// ==================== 独立缩放功能 ====================
+
+/**
+ * 初始化独立缩放功能
+ * Ctrl + 鼠标滚轮可以单独调整各子窗口的字体大小
+ */
+function initIndependentZoom() {
+    // 定义可缩放的区域
+    const zoomableAreas = [
+        { selector: '#editor-wrapper', minSize: 10, maxSize: 24, currentSize: 14 },
+        { selector: '#content-display', minSize: 10, maxSize: 24, currentSize: 13 },
+        { selector: '#console-output', minSize: 10, maxSize: 20, currentSize: 12 }
+    ];
+    
+    zoomableAreas.forEach(area => {
+        const element = document.querySelector(area.selector);
+        if (!element) return;
+        
+        element.addEventListener('wheel', (e) => {
+            // 只有按住 Ctrl 键时才触发缩放
+            if (!e.ctrlKey) return;
+            
+            e.preventDefault();
+            e.stopPropagation();
+            
+            // 根据滚轮方向调整字体大小
+            if (e.deltaY < 0) {
+                // 向上滚动，放大
+                area.currentSize = Math.min(area.currentSize + 1, area.maxSize);
+            } else {
+                // 向下滚动，缩小
+                area.currentSize = Math.max(area.currentSize - 1, area.minSize);
+            }
+            
+            // 应用新的字体大小
+            if (area.selector === '#editor-wrapper') {
+                // CodeMirror 编辑器需要特殊处理
+                const cmElement = element.querySelector('.CodeMirror');
+                if (cmElement) {
+                    cmElement.style.fontSize = area.currentSize + 'px';
+                    if (editor) editor.refresh();
+                }
+            } else {
+                element.style.fontSize = area.currentSize + 'px';
+            }
+            
+            console.log(`${area.selector} 字体大小: ${area.currentSize}px`);
+        }, { passive: false });
+    });
+    
+    console.log('✓ 独立缩放功能已初始化 (Ctrl + 滚轮)');
+}
 
 /**
  * 初始化 CodeMirror 编辑器
@@ -58,42 +215,71 @@ function initCodeMirror() {
         matchBrackets: true,   // 括号匹配
         
         // 默认代码（示例）
-        value: `// Mini-C 编译器示例程序
-// 
-// 功能：演示基础功能、浮点运算和优化
-// 提示：点击右上角 "编译与运行" 按钮
+        value: `// ============================================
+// Mini-C 编译器 v3.0 综合功能测试
+// ============================================
+
+// 自定义函数：加法
+int add(int a, int b) {
+    return a + b;
+}
 
 void main() {
-    // 测试1：基本变量和算术运算
+    // ===== 1. 整数运算 =====
     int a = 10;
     int b = 20;
     int c = a + b;
-    output_int(c);  // 输出: 30
+    output_int(c);  // 30
     
-    // 测试2：常量折叠优化
-    int result = 3 + 4 * 5;  // 编译期优化为 23
-    output_int(result);  // 输出: 23
-    
-    // 测试3：浮点运算和类型转换
+    // ===== 2. 实型数据（浮点运算）=====
     float x = 3.14;
     float y = 2.0;
     float sum = x + y;
-    output_float(sum);  // 输出: 5.14
+    output_float(sum);  // 5.14
     
-    // 测试4：控制流和死代码消除
+    // ===== 3. 常量折叠优化 =====
+    int result = 3 + 4 * 5;
+    output_int(result);  // 23
+    
+    // ===== 4. 函数调用 =====
+    int sum2 = add(15, 25);
+    output_int(sum2);  // 40
+    
+    // ===== 5. if-else 控制流 =====
     if (1) {
-        output_int(100);  // 保留
+        output_int(100);  // 100
     } else {
-        output_int(0);    // 死代码，会被优化删除
+        output_int(0);
     }
     
-    // 测试5：循环
+    // ===== 6. while 循环 =====
     int i = 0;
     while (i < 3) {
-        output_int(i);
+        output_int(i);  // 0, 1, 2
         i = i + 1;
     }
-}`
+    
+    // ===== 7. 浮点乘法 =====
+    float pi = 3.14;
+    float doubled = pi * 2.0;
+    output_float(doubled);  // 6.28
+    
+    // ===== 8. 数组和指针声明 =====
+    int arr[5];
+    int* ptr;
+}
+
+// 预期输出：30, 5.14, 23, 40, 100, 0, 1, 2, 6.28
+// 
+// 编译器支持的语法特性：
+// ✓ 实型数据 float
+// ✓ 函数定义与调用
+// ✓ 一维/二维数组声明
+// ✓ 指针声明
+// ✓ 结构体定义
+// ✓ if-else 控制流
+// ✓ while 循环
+// ✓ 常量折叠优化`
     });
     
     console.log('✓ CodeMirror 编辑器已初始化');
@@ -151,6 +337,9 @@ async function runCompile() {
         } else {
             consoleDiv.textContent = "编译完成，但无输出信息。";
         }
+        
+        // 自动滚动到底部（优先展示运行结果）
+        consoleDiv.scrollTop = consoleDiv.scrollHeight;
         
         // 自动切换到第一个有内容的标签页
         autoSwitchToFirstAvailableTab();

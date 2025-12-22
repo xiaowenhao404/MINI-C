@@ -13,10 +13,11 @@
     --text-primary: #1d1d1f;
     --text-secondary: #86868b;
     --header-height: 50px;
-    --console-height: 150px;
+    --console-height: 220px;
     --success-color: #28c840;
     --warning-color: #febc2e;
     --error-color: #ff5f57;
+    --resize-handle-color: #c0c0c0;
 }
 
 /* ==================== 基础样式 ==================== */
@@ -149,17 +150,48 @@ body {
 
 .editor-pane {
     flex: 1;
-    border-right: 1px solid var(--border-color);
+    min-width: 200px;
     display: flex;
     flex-direction: column;
     background-color: #fff;
+    position: relative;
 }
 
 .result-pane {
     flex: 1;
+    min-width: 200px;
     display: flex;
     flex-direction: column;
     background-color: #fff;
+    position: relative;
+}
+
+/* ==================== 可拖动分隔条 ==================== */
+
+.resize-handle-h {
+    width: 6px;
+    background: var(--border-color);
+    cursor: col-resize;
+    transition: background 0.2s;
+    flex-shrink: 0;
+}
+
+.resize-handle-h:hover,
+.resize-handle-h.active {
+    background: var(--accent-color);
+}
+
+.resize-handle-v {
+    height: 6px;
+    background: var(--border-color);
+    cursor: row-resize;
+    transition: background 0.2s;
+    flex-shrink: 0;
+}
+
+.resize-handle-v:hover,
+.resize-handle-v.active {
+    background: var(--accent-color);
 }
 
 .pane-header {
@@ -263,11 +295,14 @@ body {
 
 .console-pane {
     height: var(--console-height);
+    min-height: 100px;
+    max-height: 50vh;
     border-top: 1px solid var(--border-color);
     background-color: #2e3440; /* Nord Dark */
     color: #d8dee9;
     display: flex;
     flex-direction: column;
+    position: relative;
 }
 
 .console-pane .pane-header {

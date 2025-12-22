@@ -679,13 +679,51 @@ int ir_builder_count(IRBuilder *builder) {
 /* ==================== 函数翻译（2.0版本）==================== */
 
 /**
+ * 递归处理参数列表，生成 param 声明
+ */
+static void translate_param_list(IRBuilder *builder, Tree *param_list) {
+    if (!builder || !param_list) {
+        return;
+    }
+    
+    // 遍历参数列表的所有子节点
+    for (int i = 0; i < param_list->num; i++) {
+        Tree *child = param_list->leaves[i];
+        if (!child) continue;
+        
+        if (child->name && strcmp(child->name, "PARAM") == 0) {
+            // 单个参数节点：PARAM -> type, ID
+            Tree *param_name_node = NULL;
+            for (int j = 0; j < child->num; j++) {
+                if (child->leaves[j] && child->leaves[j]->name &&
+                    strcmp(child->leaves[j]->name, "ID") == 0) {
+                    param_name_node = child->leaves[j];
+                    break;
+                }
+            }
+            if (param_name_node && param_name_node->content) {
+                IRInstruction *param = ir_instruction_create(IR_PARAM, param_name_node->content, NULL, NULL);
+                emit(builder, param);
+            }
+        } else if (child->name && strcmp(child->name, "PARAM_LIST") == 0) {
+            // 嵌套参数列表
+            translate_param_list(builder, child);
+        }
+    }
+}
+
+/**
  * 翻译函数定义
  * 
  * @param builder IR构建器
  * @param func_def 函数定义 AST 节点
+ * 
+ * AST 结构（修复后）：
+ * - 有参数: FUNC_DEF(type, ID, PARAM_LIST, sentence) - 4个子节点
+ * - 无参数: FUNC_DEF(type, ID, sentence) - 3个子节点
  */
 void translate_function_definition(IRBuilder *builder, Tree *func_def) {
-    if (!builder || !func_def) {
+    if (!builder || !func_def || func_def->num < 3) {
         return;
     }
     
@@ -693,27 +731,48 @@ void translate_function_definition(IRBuilder *builder, Tree *func_def) {
     Tree *name_node = func_def->leaves[1];
     char *func_name = name_node->content;
     
+    Tree *param_list = NULL;
     Tree *body = NULL;
     
-    // 根据子节点数量判断是否有参数列表
-    if (func_def->num == 5) {
-        // 有参数: type name (params) { body }
-        body = func_def->leaves[3];  // 跳过 {, 取 sentence
-    } else if (func_def->num == 4) {
-        // 无参数: type name () { body }
-        body = func_def->leaves[2];  // 跳过 {, 取 sentence
+    // 根据子节点数量判断结构
+    if (func_def->num == 4) {
+        // 有参数: type, ID, PARAM_LIST, sentence
+        param_list = func_def->leaves[2];
+        body = func_def->leaves[3];
+    } else if (func_def->num == 3) {
+        // 无参数: type, ID, sentence
+        body = func_def->leaves[2];
+    } else {
+        // 旧结构兼容：遍历查找
+        for (int i = 0; i < func_def->num; i++) {
+            Tree *child = func_def->leaves[i];
+            if (!child || !child->name) continue;
+            
+            if (strcmp(child->name, "PARAM_LIST") == 0) {
+                param_list = child;
+            } else if (strcmp(child->name, "sentence") == 0 ||
+                       strcmp(child->name, "statement") == 0 ||
+                       strcmp(child->name, "return_expression") == 0) {
+                body = child;
+            }
+        }
     }
     
     // 1. 生成函数开始标记
     IRInstruction *begin = ir_instruction_create(IR_FUNC_BEGIN, func_name, NULL, NULL);
     emit(builder, begin);
     
-    // 2. 翻译函数体
+    // 2. 处理参数声明
+    if (param_list) {
+        translate_param_list(builder, param_list);
+    }
+    
+    // 3. 翻译函数体
     if (body) {
         translate_statement(builder, body);
     }
     
-    // 3. 生成函数结束标记
+    // 4. 生成函数结束标记
     IRInstruction *end = ir_instruction_create(IR_FUNC_END, func_name, NULL, NULL);
     emit(builder, end);
 }
@@ -734,73 +793,81 @@ static int count_call_arguments(Tree *arg_list) {
 }
 
 /**
+ * 辅助函数：为单个参数生成 arg 指令
+ */
+static void emit_arg_for_expr(IRBuilder *builder, Tree *arg_expr) {
+    if (!builder || !arg_expr) return;
+    
+    char *arg_result = translate_expression(builder, arg_expr, NULL);
+    if (arg_result) {
+        // 检查参数是否为数组（数组参数退化为指针）
+        if (arg_expr->name && strcmp(arg_expr->name, "ID") == 0) {
+            Symbol *sym = symbol_lookup(builder->symbol_table, arg_expr->content);
+            if (sym && sym->type && sym->type->kind == TYPE_ARRAY) {
+                char *addr_temp = new_temp(builder);
+                IRInstruction *addr_inst = ir_instruction_create(IR_ADDR, arg_result, NULL, addr_temp);
+                emit(builder, addr_inst);
+                free(arg_result);
+                arg_result = addr_temp;
+            }
+        }
+        
+        IRInstruction *param = ir_instruction_create(IR_PARAM, arg_result, NULL, NULL);
+        emit(builder, param);
+        free(arg_result);
+    }
+}
+
+/**
  * 递归翻译参数列表，生成 PARAM 指令
+ * 支持多种AST结构：ARG_LIST, operate_expression, 逗号分隔列表
  * 
  * @param builder IR构建器
  * @param arg_list 参数列表节点
  * @return 参数数量
  */
 static int translate_call_arguments(IRBuilder *builder, Tree *arg_list) {
-    if (!arg_list) {
+    if (!arg_list || !arg_list->name) {
         return 0;
     }
     
     int count = 0;
     
+    // 处理 ARG_LIST 结构
     if (strcmp(arg_list->name, "ARG_LIST") == 0) {
-        // 递归处理参数列表
         count += translate_call_arguments(builder, arg_list->leaves[0]);
-        
-        // 处理当前参数（右边的参数）
-        Tree *arg_expr = arg_list->leaves[1];
-        char *arg_result = translate_expression(builder, arg_expr, NULL);
-        
-        if (arg_result) {
-            // 检查参数是否为数组（2.0版本 TASK206：数组参数退化为指针）
-            // 如果参数是数组名，需要取地址
-            if (arg_expr && arg_expr->name && strcmp(arg_expr->name, "ID") == 0) {
-                Symbol *sym = symbol_lookup(builder->symbol_table, arg_expr->content);
-                if (sym && sym->type->kind == TYPE_ARRAY) {
-                    // 数组参数：生成取地址指令
-                    char *addr_temp = new_temp(builder);
-                    IRInstruction *addr_inst = ir_instruction_create(IR_ADDR, arg_result, NULL, addr_temp);
-                    emit(builder, addr_inst);
-                    free(arg_result);
-                    arg_result = addr_temp;
-                }
-            }
-            
-            IRInstruction *param = ir_instruction_create(IR_PARAM, arg_result, NULL, NULL);
-            emit(builder, param);
-            free(arg_result);
+        if (arg_list->num > 1) {
+            emit_arg_for_expr(builder, arg_list->leaves[1]);
             count++;
         }
-    } else {
-        // 单个参数
-        char *arg_result = translate_expression(builder, arg_list, NULL);
-        
-        if (arg_result) {
-            // 检查参数是否为数组（2.0版本 TASK206）
-            if (arg_list->name && strcmp(arg_list->name, "ID") == 0) {
-                Symbol *sym = symbol_lookup(builder->symbol_table, arg_list->content);
-                if (sym && sym->type->kind == TYPE_ARRAY) {
-                    // 数组参数：生成取地址指令
-                    char *addr_temp = new_temp(builder);
-                    IRInstruction *addr_inst = ir_instruction_create(IR_ADDR, arg_result, NULL, addr_temp);
-                    emit(builder, addr_inst);
-                    free(arg_result);
-                    arg_result = addr_temp;
-                }
-            }
-            
-            IRInstruction *param = ir_instruction_create(IR_PARAM, arg_result, NULL, NULL);
-            emit(builder, param);
-            free(arg_result);
-            count = 1;
-        }
+        return count;
     }
     
-    return count;
+    // 处理 operate_expression 结构（逗号分隔的参数列表）
+    // 结构: expr, COMMA, expr, COMMA, expr...
+    if (strcmp(arg_list->name, "operate_expression") == 0) {
+        for (int i = 0; i < arg_list->num; i++) {
+            Tree *child = arg_list->leaves[i];
+            if (!child || !child->name) continue;
+            
+            // 跳过逗号
+            if (strcmp(child->name, "COMMA") == 0) continue;
+            
+            // 递归处理嵌套的 operate_expression
+            if (strcmp(child->name, "operate_expression") == 0) {
+                count += translate_call_arguments(builder, child);
+            } else {
+                // 普通表达式
+                emit_arg_for_expr(builder, child);
+                count++;
+            }
+        }
+        return count;
+    }
+    
+    // 单个参数
+    emit_arg_for_expr(builder, arg_list);
+    return 1;
 }
 
 /**

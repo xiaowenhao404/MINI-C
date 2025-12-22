@@ -35,10 +35,19 @@ make
 
 ### 3. 启动 Web 服务器
 
+**在 WSL/Linux 环境中**:
+```bash
+cd web
+python3 app.py
+```
+
+**在 Windows 环境中**（需要 WSL）:
 ```bash
 cd web
 python app.py
 ```
+
+注意：如果在 Windows 上运行 Flask，编译器会自动通过 WSL 调用。
 
 ### 4. 访问界面
 

@@ -29,6 +29,8 @@ graph LR
     G --> H[可执行文件]
 ```
 
+
+
 ### 技术栈
 
 - **编译器核心**: C/C++ (保留Flex/Bison + 重构语义分析/优化/代码生成模块)
@@ -46,7 +48,7 @@ graph LR
 
 [Mini-C/](Mini-C/)
 
-```
+```javascript
 Mini-C/
 ├── src/                          # 编译器核心源码
 │   ├── frontend/                 # 前端：词法+语法分析
@@ -100,6 +102,8 @@ Mini-C/
 └── DEV_PLAN.md                   # 开发计划
 ```
 
+
+
 ## 版本规划总览
 
 ### 1.0 - 核心编译器增强版（优先）
@@ -145,6 +149,8 @@ typedef struct Type {
 } Type;
 ```
 
+
+
 ### 符号表设计
 
 - 链式哈希表 + 作用域栈
@@ -153,13 +159,15 @@ typedef struct Type {
 
 ### 中间代码格式（四元式）
 
-```
+```javascript
 (op, arg1, arg2, result)
 示例：
   ADD, t0, t1, t2     // t2 = t0 + t1
   JZ, t0, _, L1       // if t0 == 0 goto L1
   CALL, func, n, t0   // t0 = func(n个参数)
 ```
+
+
 
 ### 优化策略
 
@@ -186,5 +194,3 @@ typedef struct Type {
 
 - 通过所有功能测试用例
 - 能编译并正确执行包含所有支持特性的综合程序
-- 优化效果可量化（栈空间减少、常量计算减少）
-- 代码质量：清晰的模块化、充分的注释、规范的错误处理

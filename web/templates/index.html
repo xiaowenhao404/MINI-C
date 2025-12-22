@@ -33,15 +33,18 @@
         <!-- 主内容区 -->
         <main class="main-split">
             <!-- 左侧：代码编辑器 -->
-            <section class="editor-pane">
+            <section class="editor-pane" id="editor-pane">
                 <div class="pane-header">
                     <span class="header-icon">📝</span> Source Code (temp.c)
                 </div>
                 <div id="editor-wrapper"></div>
             </section>
 
+            <!-- 水平分隔条（可拖动） -->
+            <div class="resize-handle-h" id="resize-handle-h"></div>
+
             <!-- 右侧：中间结果展示 -->
-            <section class="result-pane">
+            <section class="result-pane" id="result-pane">
                 <div class="tabs">
                     <button class="tab-btn active" onclick="switchTab('tokens')">
                         <span class="tab-icon">🔤</span> Token 流
@@ -71,8 +74,11 @@
             </section>
         </main>
 
+        <!-- 垂直分隔条（可拖动） -->
+        <div class="resize-handle-v" id="resize-handle-v"></div>
+
         <!-- 底部：控制台输出 -->
-        <footer class="console-pane">
+        <footer class="console-pane" id="console-pane">
             <div class="pane-header">
                 <span class="header-icon">🖥️</span> Console Output / Errors
             </div>
