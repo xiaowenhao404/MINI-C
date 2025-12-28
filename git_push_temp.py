@@ -41,7 +41,7 @@ run_git(["commit", "-m", commit_msg])
 
 # 4. 推送到远程
 print("\n=== Git Push ===")
-run_git(["push"])
+run_git(["push", "--set-upstream", "origin", "release-1.0"])
 
 print("\n=== 完成 ===")
 
