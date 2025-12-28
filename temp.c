@@ -3,72 +3,16 @@
 // ============================================
 
 // 自定义函数：加法
-int add(int a, int b) {
-    return a + b;
-}
+
 
 void main() {
     // ===== 1. 整数运算 =====
     int a = 10;
-    int b = 20;
-    int c = a + b;
+    float b = 2.9;
+    float c = a + b;
     output(c);  // 预期: 30
     
-    // ===== 2. 实型数据（浮点运算）=====
-    float x = 3.14;
-    float y = 2.0;
-    float sum = x + y;
-    output(sum);  // 预期: 5.14
     
-    // ===== 3. 常量折叠优化 =====
-    int result = 3 + 4 * 5;
-    output(result);  // 预期: 23
-    
-    // ===== 4. 函数调用 =====
-    int sum2 = add(10, 30);
-    output(sum2);  // 预期: 40
-    
-    // ===== 5. if-else 控制流 =====
-    if (a < b) {
-        output(100);  // 预期: 100 (因为 10 < 20)
-    } else {
-        output(0);
-    }
-    
-    // ===== 6. while 循环 =====
-    int i = 0;
-    while (i < 3) {
-        output(i);  // 预期: 0, 1, 2
-        i = i + 1;
-    }
-    
-    // ===== 7. 浮点乘法 =====
-    float pi = 3.14;
-    float doubled = pi * 2.0;
-    output(doubled);  // 预期: 6.28
-    
-    // ===== 8. 数组操作 =====
-    int arr[5];
-    arr[0] = 10;
-    arr[1] = 20;
-    arr[2] = arr[0] + arr[1];
-    output(arr[0]);  // 预期: 10
-    output(arr[1]);  // 预期: 20
-    output(arr[2]);  // 预期: 30
-    
-    // ===== 9. 指针操作 =====
-    int val = 42;
-    int* ptr;
-    ptr = &val;
-    output(*ptr);    // 预期: 42 (解引用)
-    *ptr = 100;
-    output(val);     // 预期: 100 (通过指针修改)
-    
-    // ===== 10. for 循环 =====
-    int j;
-    for (j = 0; j < 3; j = j + 1) {
-        output(j);  // 预期: 0, 1, 2
-    }
 }
 
 // ============================================

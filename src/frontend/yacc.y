@@ -2,6 +2,7 @@
     #include "../utils/tree.h"
     #include "../utils/hashMap.h"
     #include "../utils/inner.h"
+    #include "../semantic/semantic_analyzer.h"
     #include <stdio.h>
     #include <string.h>
     #include <stdlib.h>
@@ -20,6 +21,8 @@
 
     Tree* root;
     extern Node *head;
+    extern int lexical_error_count;  // 词法错误计数器(定义在lex.l)
+    int lexical_passed_printed = 0;  // 是否已打印词法分析通过
     //中间代码生成
     int line_count=1;
     int label_id=0;  // 全局标签计数器
@@ -186,6 +189,7 @@ postfix_expression
     | postfix_expression '[' operate_expression ']'
     {
         $$ = createTree("ARRAY_ACCESS", 2, $1, $3);
+        $$->line = yylineno;  // 设置行号
         // 生成数组访问的中间代码
         // t1 = index * 4
         // t2 = arr + t1
@@ -333,7 +337,10 @@ unary_expression
             char* src_inner = $2->inner;  // 先保存原始值
             char* src_code = $2->code;
             $$ = createTree("ADDR_OF", 1, $2);
+            $$->name = "ADDR_OF";  // 强制设置 name，因为 createTree(1) 返回原节点
             $$->line = yylineno;
+            // 保存变量名到 content 字段，用于语义分析
+            $$->content = src_inner;
             // 生成取地址的中间代码: result = addr var
             $$->inner = mergeCode(2, "t", toString(inner_count++));
             $$->code = mergeCode(6, src_code ? src_code : "",
@@ -479,6 +486,7 @@ assignment_expression
         } else {
             // 普通赋值
             $$ = assignOpr("assignment_expression", $1, $2, $3);
+            $$->line = yylineno;  // 设置行号
         }
     }
 ;
@@ -644,7 +652,7 @@ statement
     {
         $$ = createTree("statement", 2, $1, $2);
     }
-    | single_expression  {head = NULL;}
+    | single_expression  {head = NULL; $$ = $1;}
 ;
 
 for_expression
@@ -699,10 +707,12 @@ return_expression
     : RET
     {
         $$ = retNull("return_expression", $1);
+        $$->line = yylineno;  // 设置行号
     }
     | RET operate_expression
     {
         $$ = retOpr("return_expression", $1, $2);
+        $$->line = yylineno;  // 设置行号
     }
 ;
 
@@ -818,7 +828,79 @@ type
 
 
 void yyerror(const char* s){
-    printf("Error: %s\tline: %d\n", s, yylineno);
+    extern char* yytext;
+    
+    // 如果已经有词法错误，不再输出语法错误（避免混淆）
+    if (lexical_error_count > 0) {
+        return;
+    }
+    
+    // 在输出语法错误前，先输出词法分析通过（如果还没输出的话）
+    if (!lexical_passed_printed) {
+        printf("✅ 词法分析通过\n");
+        lexical_passed_printed = 1;
+    }
+    
+    // 根据当前token判断具体错误类型
+    if (yytext) {
+        // 如果当前token是类型关键字或标识符，可能是上一行缺少分号
+        if (strcmp(yytext, "int") == 0 || strcmp(yytext, "float") == 0 ||
+            strcmp(yytext, "char") == 0 || strcmp(yytext, "void") == 0 ||
+            strcmp(yytext, "if") == 0 || strcmp(yytext, "while") == 0 ||
+            strcmp(yytext, "for") == 0 || strcmp(yytext, "return") == 0) {
+            printf("[语法错误] 行 %d: 可能缺少分号\n", yylineno > 1 ? yylineno - 1 : yylineno);
+        }
+        // 如果遇到左大括号，可能是缺少右括号
+        else if (strcmp(yytext, "{") == 0) {
+            printf("[语法错误] 行 %d: 括号不匹配，可能缺少 ')'\n", yylineno);
+        }
+        // 如果遇到右括号，可能是缺少左括号或条件表达式有误
+        else if (strcmp(yytext, ")") == 0) {
+            printf("[语法错误] 行 %d: 括号不匹配或表达式有误\n", yylineno);
+        }
+        // 如果遇到右大括号，可能是语句块有问题
+        else if (strcmp(yytext, "}") == 0) {
+            printf("[语法错误] 行 %d: 语句块结构有误，可能缺少分号\n", yylineno);
+        }
+        // 如果遇到标识符，可能是语句结构不完整
+        else if ((yytext[0] >= 'a' && yytext[0] <= 'z') || 
+                 (yytext[0] >= 'A' && yytext[0] <= 'Z') || 
+                 yytext[0] == '_') {
+            printf("[语法错误] 行 %d: 语句结构不完整，意外的标识符 '%s'\n", yylineno, yytext);
+        }
+        // 如果遇到数字，可能是表达式有误
+        else if (yytext[0] >= '0' && yytext[0] <= '9') {
+            printf("[语法错误] 行 %d: 表达式结构有误，意外的数字 '%s'\n", yylineno, yytext);
+        }
+        // 如果遇到分号，可能是表达式不完整
+        else if (strcmp(yytext, ";") == 0) {
+            printf("[语法错误] 行 %d: 表达式不完整\n", yylineno);
+        }
+        // 如果遇到左括号，可能是表达式结构有问题
+        else if (strcmp(yytext, "(") == 0) {
+            printf("[语法错误] 行 %d: 意外的 '('，可能缺少运算符或语句不完整\n", yylineno);
+        }
+        // 如果遇到左方括号，可能是数组使用有问题
+        else if (strcmp(yytext, "[") == 0) {
+            printf("[语法错误] 行 %d: 意外的 '['，数组声明或访问有误\n", yylineno);
+        }
+        // 如果遇到右方括号
+        else if (strcmp(yytext, "]") == 0) {
+            printf("[语法错误] 行 %d: 括号不匹配，可能缺少 '['\n", yylineno);
+        }
+        // 如果遇到运算符
+        else if (strcmp(yytext, "=") == 0 || strcmp(yytext, "+") == 0 ||
+                 strcmp(yytext, "-") == 0 || strcmp(yytext, "*") == 0 ||
+                 strcmp(yytext, "/") == 0 || strcmp(yytext, "%") == 0) {
+            printf("[语法错误] 行 %d: 意外的运算符 '%s'，表达式结构有误\n", yylineno, yytext);
+        }
+        // 其他情况显示通用语法错误
+        else {
+            printf("[语法错误] 行 %d: 语法错误，意外的符号 '%s'\n", yylineno, yytext);
+        }
+    } else {
+        printf("[语法错误] 行 %d: 语法错误\n", yylineno);
+    }
 }
 
 int main(int argc, char* argv[]){
@@ -827,19 +909,84 @@ int main(int argc, char* argv[]){
     const char* outFile3="Innercode";
     extern FILE* yyin, *yyout;	//yyin和yyout都是FILE*类型
     type = 0;
+    lexical_error_count = 0;  // 重置词法错误计数
     hashMap = createHashMap(2);
 	yyin = fopen(argv[1], "r");
     yyout = fopen(outFile, "w");
     out = fopen(outFile2,"w");
     outInner = fopen(outFile3,"w");
     fprintf(yyout, "%-15s\t%-15s\t%s\n", "单词", "词素", "属性");
-	if(!yyparse()){
-        //正常解读文件
-        printf("✅ 编译成功\n");
+    
+    printf("=== 编译阶段 ===\n");
+    printf("🔍 开始词法和语法分析...\n");
+    
+    lexical_passed_printed = 0;  // 重置标志
+    int parse_result = yyparse();
+    
+    // 检查词法错误
+    if(lexical_error_count > 0) {
+        printf("\n❌ 词法分析失败！发现 %d 个词法错误\n", lexical_error_count);
+        printf("=== 编译终止 ===\n");
+        fclose(out);
+        fclose(outInner);
+        fclose(yyin);
+        fclose(yyout);
+        destoryHashMap(hashMap);
+        return 1;
+    }
+    
+    // 词法分析通过（如果还没打印的话）
+    if (!lexical_passed_printed) {
+        printf("✅ 词法分析通过\n");
+        lexical_passed_printed = 1;
+    }
+    
+	if(!parse_result){
+        printf("✅ 语法分析通过\n\n");
         printTree(root);
+        
+        // === 语义分析阶段 ===
+        printf("🔍 开始语义分析...\n");
+        
+        init_type_system();
+        SemanticAnalyzer* analyzer = semantic_analyzer_create(argv[1]);
+        
+        if(analyzer) {
+            // 从 hashMap 导入符号到语义分析器的符号表
+            import_symbols_from_hashmap(analyzer, hashMap);
+            
+            // 执行语义分析
+            analyze_program(analyzer, root);
+            
+            // 确保错误信息在统计信息之前输出
+            fflush(stderr);
+            fflush(stdout);
+            
+            // 输出语义分析结果
+            printf("\n语义分析完成:\n");
+            printf("  错误数: %d\n", analyzer->error_count);
+            printf("  警告数: %d\n", analyzer->warning_count);
+            printf("  符号总数: %d\n", symbol_table_count(analyzer->symbol_table));
+            printf("\n");
+            
+            if(analyzer->error_count > 0) {
+                printf("❌ 语义分析失败！发现 %d 个错误, %d 个警告\n", 
+                       analyzer->error_count, analyzer->warning_count);
+                printf("=== 编译终止 ===\n");
+            } else {
+                printf("✅ 语义分析通过\n");
+            }
+            
+            semantic_analyzer_destroy(analyzer);
+        } else {
+            printf("⚠️ 语义分析器初始化失败\n");
+        }
+        
+        cleanup_type_system();
     }
 	else{
-        printf("❌ 编译出错\n");
+        printf("❌ 语法分析失败\n");
+        printf("=== 编译终止 ===\n");
     }
     fclose(out);
     fclose(outInner);

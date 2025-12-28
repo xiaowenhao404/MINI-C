@@ -279,7 +279,20 @@ Tree *forOpr(char *name, char *label_cond, char *label_body, char *label_end, Tr
 
 Tree *retNull(char *name, Tree *ret)
 {
-    Tree *t = createTree(name, 1, ret);
+    // 不使用 createTree，因为它在 number==1 时会直接返回 ret
+    // 我们需要创建一个新的节点来包装 ret
+    Tree *t = initTree(1);
+    if (!t)
+    {
+        printf("Out of space \n");
+        exit(0);
+    }
+    t->num = 1;
+    int len = strlen(name);
+    t->name = (char *)malloc(len + 1);
+    memcpy(t->name, name, len + 1);
+    t->leaves = (Tree **)malloc(sizeof(Tree *) * 1);
+    t->leaves[0] = ret;
     t->code = "#return\n";
     line_count++;
     return t;

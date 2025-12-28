@@ -306,6 +306,22 @@ void semantic_warning(SemanticAnalyzer *sa, int line, const char *format, ...);
  */
 bool has_errors(SemanticAnalyzer *sa);
 
+/* ==================== 符号导入函数 ==================== */
+
+// 前向声明 HashMap 结构
+struct HashMap;
+
+/**
+ * 从 hashMap 导入符号到语义分析器的符号表
+ * 
+ * 在语义分析开始前调用，将语法分析阶段收集的符号信息
+ * 导入到语义分析器的符号表中，确保两套符号表同步
+ * 
+ * @param sa 语义分析器指针
+ * @param hashMap 语法分析阶段的符号表
+ */
+void import_symbols_from_hashmap(SemanticAnalyzer *sa, struct HashMap *hashMap);
+
 /* ==================== 辅助工具函数 ==================== */
 
 /**

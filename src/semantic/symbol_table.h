@@ -44,6 +44,7 @@ typedef struct Symbol {
     int offset;             // 栈帧偏移量（字节）
     bool is_global;         // 是否全局变量
     bool is_initialized;    // 是否已初始化
+    bool is_declared;       // 是否已从AST声明过（用于检测重定义）
     
     int line;               // 定义所在行号（用于错误报告）
     

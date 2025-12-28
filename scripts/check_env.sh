@@ -131,7 +131,10 @@ fi
 # 检查 Flask（用于Web界面，3.0版本需要）
 echo -n "检查 Flask ... "
 if python3 -c "import flask" 2> /dev/null; then
-    FLASK_VERSION=$(python3 -c "import flask; print(flask.__version__)")
+    FLASK_VERSION=$(python3 -c "from importlib.metadata import version; print(version('flask'))" 2>/dev/null)
+    if [ -z "$FLASK_VERSION" ]; then
+        FLASK_VERSION="未知"
+    fi
     echo -e "${GREEN}✓ 已安装 (版本 $FLASK_VERSION)${NC}"
 else
     echo -e "${YELLOW}⚠ 未安装 (3.0版本Web界面需要)${NC}"

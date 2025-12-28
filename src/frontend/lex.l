@@ -2,6 +2,7 @@
     #include "yacc.tab.h"
     #include "../utils/tree.h"
 	void comment(void);
+    int lexical_error_count = 0;  // 词法错误计数器
 %}
 %top{
     #define _POSIX_C_SOURCE 200809L
@@ -118,7 +119,8 @@ void comment(void)
 		prev = c;
 	}
 	/* perror("unterminated comment"); */
-    printf("Error: unterminated comment\n");
+    printf("[词法错误] 注释未闭合，缺少结束符 */\n");
+    lexical_error_count++;
 }
 int yywrap() 
 { 

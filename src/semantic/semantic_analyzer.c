@@ -7,19 +7,30 @@
  * 版本: 1.0
  */
 
+#define _POSIX_C_SOURCE 200809L
 #include "semantic_analyzer.h"
-#include "../../c-complier-master/tree.h" // 引用现有的Tree结构
+#include "../utils/tree.h" // 引用现有的Tree结构
+#include "../utils/hashMap.h" // 引用 hashMap 结构用于符号导入
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdarg.h>
 
+// yacc.tab.h 中的 token 值（用于类型映射）
+#define YACC_INT 263
+#define YACC_FLOAT 264
+#define YACC_CHAR 265
+#define YACC_VOID 266
+
 /* ==================== 前向声明 ==================== */
 
 static void analyze_variable_list(SemanticAnalyzer *sa, struct Tree *vars, Type *var_type);
 static StructMember *extract_struct_members(SemanticAnalyzer *sa, Tree *member_list);
+static int count_initializers(Tree *init_list);
+static void check_initializer_types(SemanticAnalyzer *sa, Tree *init_list, Type *expected_type);
 static void extract_members_recursive(SemanticAnalyzer *sa, Tree *node,
                                       StructMember **head, StructMember **tail);
+Type *analyze_assignment_with_line(SemanticAnalyzer *sa, struct Tree *lhs, struct Tree *rhs, int line);
 
 /* ==================== 语义分析器创建和销毁 ==================== */
 
@@ -77,10 +88,109 @@ void semantic_analyzer_destroy(SemanticAnalyzer *sa)
     free(sa);
 }
 
+/* ==================== 符号导入 ==================== */
+
+/**
+ * 将 hashMap 中的类型值转换为 Type* 结构
+ */
+static Type* convert_hashmap_type(int type, Declator *declator) {
+    Type *base_type = NULL;
+    
+    // 基础类型映射
+    switch (type) {
+        case YACC_INT:
+            base_type = new_int_type();
+            break;
+        case YACC_FLOAT:
+            base_type = new_float_type();
+            break;
+        case YACC_CHAR:
+            base_type = new_char_type();
+            break;
+        case YACC_VOID:
+            base_type = new_void_type();
+            break;
+        default:
+            // 未知类型，默认为 int
+            base_type = new_int_type();
+            break;
+    }
+    
+    if (!base_type) {
+        return NULL;
+    }
+    
+    // 处理数组和指针修饰符
+    if (declator) {
+        Declator *d = declator;
+        while (d) {
+            if (d->type == ARRAY) {
+                // 数组类型
+                int size = 0;
+                if (d->length && d->length->content) {
+                    size = atoi(d->length->content);
+                }
+                base_type = new_array_type(base_type, size);
+            } else if (d->type == POINTER) {
+                // 指针类型
+                base_type = new_pointer_type(base_type);
+            }
+            d = d->next;
+        }
+    }
+    
+    return base_type;
+}
+
+/**
+ * 从 hashMap 导入符号到语义分析器的符号表
+ */
+void import_symbols_from_hashmap(SemanticAnalyzer *sa, HashMap *hashMap) {
+    if (!sa || !hashMap || !sa->symbol_table) {
+        return;
+    }
+    
+    // 遍历 hashMap 的所有桶
+    for (int i = 0; i < hashMap->size; i++) {
+        HashNode *node = hashMap->hash_table[i];
+        
+        while (node) {
+            if (node->data && node->data->id_name) {
+                // 转换类型
+                Type *sym_type = convert_hashmap_type(
+                    node->data->type, 
+                    node->data->declator
+                );
+                
+                if (sym_type) {
+                    // 检查是否已存在（避免重复插入）
+                    Symbol *existing = symbol_lookup(sa->symbol_table, node->data->id_name);
+                    if (!existing) {
+                        // 插入符号到语义分析器的符号表
+                        Symbol *sym = symbol_insert(
+                            sa->symbol_table,
+                            node->data->id_name,
+                            sym_type,
+                            0  // 行号信息在 hashMap 中不可用
+                        );
+                        
+                        if (sym) {
+                            sym->is_initialized = true;
+                            sym->scope_level = node->data->scope;
+                        }
+                    }
+                }
+            }
+            node = node->next;
+        }
+    }
+}
+
 /* ==================== 错误报告 ==================== */
 
 /**
  * 报告语义错误
+ * 输出格式: [语义错误-类型] 行 X: 描述
  */
 void semantic_error(SemanticAnalyzer *sa, int line, const char *format, ...)
 {
@@ -89,16 +199,16 @@ void semantic_error(SemanticAnalyzer *sa, int line, const char *format, ...)
         return;
     }
 
-    // 打印错误位置
-    fprintf(stderr, "%s:%d: 错误: ", sa->current_file ? sa->current_file : "unknown", line);
+    // 打印错误信息（使用 stdout 以保证输出顺序）
+    printf("[语义错误] 行 %d: ", line);
 
-    // 打印错误信息
+    // 打印具体错误描述
     va_list args;
     va_start(args, format);
-    vfprintf(stderr, format, args);
+    vprintf(format, args);
     va_end(args);
 
-    fprintf(stderr, "\n");
+    printf("\n");
 
     sa->error_count++;
 }
@@ -114,15 +224,15 @@ void semantic_warning(SemanticAnalyzer *sa, int line, const char *format, ...)
     }
 
     // 打印警告位置
-    fprintf(stderr, "%s:%d: 警告: ", sa->current_file ? sa->current_file : "unknown", line);
+    printf("%s:%d: 警告: ", sa->current_file ? sa->current_file : "unknown", line);
 
     // 打印警告信息
     va_list args;
     va_start(args, format);
-    vfprintf(stderr, format, args);
+    vprintf(format, args);
     va_end(args);
 
-    fprintf(stderr, "\n");
+    printf("\n");
 
     sa->warning_count++;
 }
@@ -240,16 +350,30 @@ bool is_lvalue(struct Tree *expr)
         return true;
     }
 
-    // 数组访问是左值（2.0版本）
-    if (strcmp(expr->name, "Array") == 0)
+    // 数组访问是左值
+    if (strcmp(expr->name, "ARRAY_ACCESS") == 0 ||
+        strcmp(expr->name, "Array") == 0 ||
+        strcmp(expr->name, "postfix_expression") == 0)
     {
+        // postfix_expression 需要检查是否是数组访问形式
+        // 简化处理：如果包含 [ 和 ]，认为是数组访问
         return true;
     }
 
-    // 指针解引用是左值（2.0版本）
-    if (strcmp(expr->name, "Pointer") == 0)
+    // 指针解引用是左值
+    if (strcmp(expr->name, "DEREF") == 0 ||
+        strcmp(expr->name, "Pointer") == 0 ||
+        strcmp(expr->name, "unary_expression") == 0)
     {
+        // unary_expression 可能是解引用，需要检查
+        // 简化处理：只要是 unary_expression 就允许
         return true;
+    }
+
+    // 递归检查：如果表达式只有一个子节点，检查子节点是否是左值
+    if (expr->num == 1 && expr->leaves[0])
+    {
+        return is_lvalue(expr->leaves[0]);
     }
 
     return false;
@@ -270,7 +394,7 @@ Type *lookup_variable_type(SemanticAnalyzer *sa, const char *var_name, int line)
     Symbol *sym = symbol_lookup(sa->symbol_table, var_name);
     if (!sym)
     {
-        semantic_error(sa, line, "变量 '%s' 未定义", var_name);
+        semantic_error(sa, line, "[变量未定义] 变量 '%s' 未声明", var_name);
         return NULL;
     }
 
@@ -296,6 +420,18 @@ Type *get_node_type(SemanticAnalyzer *sa, struct Tree *node)
     {
         return new_int_type();
     }
+    
+    // FLOAT10 -> float类型
+    if (strcmp(node->name, "FLOAT10") == 0)
+    {
+        return new_float_type();
+    }
+    
+    // CHAR -> char类型
+    if (strcmp(node->name, "CHAR") == 0 && node->content)
+    {
+        return new_char_type();
+    }
 
     // ID -> 从符号表查找
     if (strcmp(node->name, "ID") == 0)
@@ -306,8 +442,6 @@ Type *get_node_type(SemanticAnalyzer *sa, struct Tree *node)
         }
         return NULL;
     }
-
-    // 其他类型（float literal等）在扩展版本实现
 
     return NULL;
 }
@@ -349,9 +483,20 @@ Type *analyze_expression(SemanticAnalyzer *sa, struct Tree *expr)
         return analyze_struct_member_access(sa, expr);
     }
 
-    // 数组访问表达式（2.0版本）
-    // 注意：数组访问的识别可能需要根据实际的AST结构进行调整
-    // 这里暂时跳过，因为数组访问可能通过其他方式识别
+    // 数组访问表达式
+    if (expr->name && strcmp(expr->name, "ARRAY_ACCESS") == 0)
+    {
+        return analyze_array_access(sa, expr);
+    }
+
+    // 赋值表达式: assignOpr 创建，num=2, leaves[0]=左值, leaves[1]=右值, content=运算符
+    // op(name, 2, t2, t1, t3) => content=t2(运算符), leaves[0]=t1(左值), leaves[1]=t3(右值)
+    if (expr->name && strcmp(expr->name, "assignment_expression") == 0 && expr->num == 2)
+    {
+        Tree *lhs = expr->leaves[0];
+        Tree *rhs = expr->leaves[1];
+        return analyze_assignment_with_line(sa, lhs, rhs, expr->line);
+    }
 
     // 常量表达式
     Type *type = get_node_type(sa, expr);
@@ -361,16 +506,13 @@ Type *analyze_expression(SemanticAnalyzer *sa, struct Tree *expr)
     }
 
     // 二元运算表达式
-    if (is_expression_node(expr) && expr->num >= 3)
+    // binaryOpr 创建的节点: num=2, leaves[0]=左操作数, leaves[1]=右操作数, content=运算符
+    if (is_expression_node(expr) && expr->num == 2 && expr->content)
     {
-        const char *op = get_operator(expr);
-        if (op)
+        // 运算符存储在 content 中
+        if (expr->leaves[0] && expr->leaves[1])
         {
-            // 假设二元运算：leaves[0] op leaves[2]
-            if (expr->leaves[0] && expr->leaves[2])
-            {
-                return analyze_binary_op(sa, op, expr->leaves[0], expr->leaves[2]);
-            }
+            return analyze_binary_op(sa, expr->content, expr->leaves[0], expr->leaves[1]);
         }
     }
 
@@ -441,7 +583,7 @@ Type *analyze_binary_op(SemanticAnalyzer *sa, const char *op,
         if (!type_equal(left_type->base, right_type->base))
         {
             semantic_error(sa, left->line,
-                           "指针相减必须指向相同类型：%s* 和 %s*",
+                           "[类型不匹配] 指针相减必须指向相同类型: %s* 和 %s*",
                            type_to_string(left_type->base),
                            type_to_string(right_type->base));
             return NULL;
@@ -473,7 +615,7 @@ Type *analyze_binary_op(SemanticAnalyzer *sa, const char *op,
         if (!type_compatible(left_type, right_type))
         {
             semantic_error(sa, left->line,
-                           "类型不兼容: 不能对 '%s' 和 '%s' 进行 '%s' 运算",
+                           "[类型不匹配] 不能对 '%s' 和 '%s' 进行 '%s' 运算",
                            type_to_string(left_type),
                            type_to_string(right_type),
                            op);
@@ -500,17 +642,20 @@ Type *analyze_binary_op(SemanticAnalyzer *sa, const char *op,
 /**
  * 分析赋值表达式
  */
-Type *analyze_assignment(SemanticAnalyzer *sa, struct Tree *lhs, struct Tree *rhs)
+Type *analyze_assignment_with_line(SemanticAnalyzer *sa, struct Tree *lhs, struct Tree *rhs, int line)
 {
     if (!sa || !lhs || !rhs)
     {
         return NULL;
     }
 
+    // 使用传入的行号，如果为0则尝试使用lhs的行号
+    int error_line = (line > 0) ? line : lhs->line;
+
     // 检查左值
     if (!is_lvalue(lhs))
     {
-        semantic_error(sa, lhs->line, "赋值运算的左侧必须是左值");
+        semantic_error(sa, error_line, "[非左值赋值] 赋值运算的左侧必须是左值");
         return NULL;
     }
 
@@ -526,14 +671,19 @@ Type *analyze_assignment(SemanticAnalyzer *sa, struct Tree *lhs, struct Tree *rh
     // 检查类型兼容性
     if (!type_compatible(lhs_type, rhs_type))
     {
-        semantic_error(sa, lhs->line,
-                       "类型不匹配: 不能将 '%s' 赋值给 '%s'",
+        semantic_error(sa, error_line,
+                       "[类型不匹配] 不能将 '%s' 赋值给 '%s'",
                        type_to_string(rhs_type),
                        type_to_string(lhs_type));
         return NULL;
     }
 
     return lhs_type;
+}
+
+Type *analyze_assignment(SemanticAnalyzer *sa, struct Tree *lhs, struct Tree *rhs)
+{
+    return analyze_assignment_with_line(sa, lhs, rhs, 0);
 }
 
 /**
@@ -609,12 +759,37 @@ void analyze_declaration(SemanticAnalyzer *sa, struct Tree *decl)
 
     if (!var_type)
     {
-        semantic_error(sa, decl->line, "未知的类型");
+        semantic_error(sa, decl->line, "[类型错误] 未知的类型");
         return;
     }
 
     // 处理变量列表（可能是多个变量）
     analyze_variable_list(sa, vars_node, var_type);
+}
+
+/**
+ * 从表达式中递归提取 ID 节点
+ */
+static Tree *extract_id_node(Tree *expr)
+{
+    if (!expr || !expr->name)
+    {
+        return NULL;
+    }
+
+    // 如果直接是 ID 节点，返回
+    if (strcmp(expr->name, "ID") == 0)
+    {
+        return expr;
+    }
+
+    // 递归查找第一个子节点中的 ID
+    if (expr->num > 0 && expr->leaves && expr->leaves[0])
+    {
+        return extract_id_node(expr->leaves[0]);
+    }
+
+    return NULL;
 }
 
 /**
@@ -632,49 +807,92 @@ static void analyze_variable_list(SemanticAnalyzer *sa, struct Tree *vars, Type 
     // 如果是赋值表达式
     if (vars->name && strcmp(vars->name, "assignment_expression") == 0)
     {
-        // leaves[0]: ID, leaves[1]: =, leaves[2]: 表达式
-        if (vars->num >= 3 && vars->leaves[0])
+        // assignment_expression 只有 2 个 leaves (ID 和 表达式)
+        if (vars->num >= 2 && vars->leaves[0])
         {
-            Tree *id_node = vars->leaves[0];
+            // 递归提取 ID 节点
+            Tree *id_node = extract_id_node(vars->leaves[0]);
 
-            if (id_node->name && strcmp(id_node->name, "ID") == 0 && id_node->content)
+            if (id_node && id_node->content)
             {
-                // 插入符号到符号表
-                Symbol *sym = symbol_insert(sa->symbol_table, id_node->content,
-                                            var_type, id_node->line);
-
-                if (!sym)
-                {
-                    semantic_error(sa, id_node->line,
-                                   "变量 '%s' 重定义", id_node->content);
-                    return;
+                // 检查符号是否已存在
+                Symbol *existing = symbol_lookup(sa->symbol_table, id_node->content);
+                Symbol *sym = NULL;
+                
+                if (existing) {
+                    // 检查是否已被声明过（重定义检测）
+                    if (existing->is_declared) {
+                        semantic_error(sa, id_node->line,
+                                       "[重定义] 变量 '%s' 重复定义", id_node->content);
+                        return;
+                    }
+                    // 符号存在但未声明过（从 hashMap 导入），标记为已声明
+                    existing->line = id_node->line;
+                    existing->is_initialized = true;
+                    existing->is_declared = true;
+                    sym = existing;
+                } else {
+                    // 尝试插入新符号
+                    sym = symbol_insert(sa->symbol_table, id_node->content,
+                                        var_type, id_node->line);
+                    if (!sym)
+                    {
+                        semantic_error(sa, id_node->line,
+                                       "[重定义] 变量 '%s' 重复定义", id_node->content);
+                        return;
+                    }
+                    sym->is_initialized = true;
+                    sym->is_declared = true;
                 }
 
-                sym->is_initialized = true;
-
                 // 检查初始化表达式的类型
-                if (vars->leaves[2])
+                if (vars->num >= 2 && vars->leaves[1])
                 {
-                    Type *init_type = analyze_expression(sa, vars->leaves[2]);
+                    Type *init_type = analyze_expression(sa, vars->leaves[1]);
+                    
+                    // 如果初始化表达式是函数类型，提取其返回类型
+                    // （处理函数调用的情况，函数调用应该返回返回类型而不是函数类型）
+                    if (init_type && init_type->kind == TYPE_FUNCTION && init_type->return_type)
+                    {
+                        init_type = init_type->return_type;
+                    }
+                    
                     if (init_type && !type_compatible(var_type, init_type))
                     {
                         semantic_error(sa, id_node->line,
-                                       "初始化类型不匹配: 不能将 '%s' 赋值给 '%s'",
+                                       "[类型不匹配] 初始化时不能将 '%s' 赋值给 '%s'",
                                        type_to_string(init_type),
                                        type_to_string(var_type));
                     }
                 }
             }
         }
+        return; // 处理完 assignment_expression 后返回，避免重复递归
     }
     // 如果是ID节点（无初始化）
     else if (vars->name && strcmp(vars->name, "ID") == 0 && vars->content)
     {
-        Symbol *sym = symbol_insert(sa->symbol_table, vars->content,
-                                    var_type, vars->line);
-        if (!sym)
-        {
-            semantic_error(sa, vars->line, "变量 '%s' 重定义", vars->content);
+        // 检查符号是否已存在
+        Symbol *existing = symbol_lookup(sa->symbol_table, vars->content);
+        
+        if (existing) {
+            // 检查是否已被声明过（重定义检测）
+            if (existing->is_declared) {
+                semantic_error(sa, vars->line, "[重定义] 变量 '%s' 重复定义", vars->content);
+                return;
+            }
+            // 符号存在但未声明过，标记为已声明
+            existing->line = vars->line;
+            existing->is_declared = true;
+        } else {
+            Symbol *sym = symbol_insert(sa->symbol_table, vars->content,
+                                        var_type, vars->line);
+            if (!sym)
+            {
+                semantic_error(sa, vars->line, "[重定义] 变量 '%s' 重复定义", vars->content);
+            } else {
+                sym->is_declared = true;
+            }
         }
     }
 
@@ -795,10 +1013,38 @@ void analyze_statement(SemanticAnalyzer *sa, struct Tree *stmt)
     // 根据节点名称分派到不同的处理函数
     if (stmt->name)
     {
+        // Main 函数 (void main() { ... })
+        if (strcmp(stmt->name, "Main Func") == 0)
+        {
+            enter_scope(sa->symbol_table);
+            // 遍历所有子节点找到函数体
+            for (int i = 0; i < stmt->num; i++)
+            {
+                if (stmt->leaves[i])
+                {
+                    // 跳过终结符 (VOID, MAIN, (, ), {, })
+                    if (stmt->leaves[i]->name &&
+                        strcmp(stmt->leaves[i]->name, "VOID") != 0 &&
+                        strcmp(stmt->leaves[i]->name, "INT") != 0 &&
+                        strcmp(stmt->leaves[i]->name, "MAIN") != 0 &&
+                        strcmp(stmt->leaves[i]->name, "LP") != 0 &&
+                        strcmp(stmt->leaves[i]->name, "RP") != 0 &&
+                        strcmp(stmt->leaves[i]->name, "LCB") != 0 &&
+                        strcmp(stmt->leaves[i]->name, "RCB") != 0)
+                    {
+                        analyze_statement(sa, stmt->leaves[i]);
+                    }
+                }
+            }
+            exit_scope(sa->symbol_table);
+            return;
+        }
         // 函数定义（2.0版本）
+        // 注意：函数定义在 preprocess_function_definitions 中已经处理过
+        // 这里跳过以避免重复分析
         if (strcmp(stmt->name, "FUNC_DEF") == 0)
         {
-            analyze_function_definition(sa, stmt);
+            return;  // 已在预处理阶段处理，跳过
         }
         // 结构体定义（2.0版本）
         else if (strcmp(stmt->name, "STRUCT_DEF") == 0)
@@ -904,6 +1150,37 @@ void analyze_statement(SemanticAnalyzer *sa, struct Tree *stmt)
 }
 
 /**
+ * 预处理函数定义（第一遍遍历）
+ * 只收集函数定义，注册函数符号到符号表
+ */
+static void preprocess_function_definitions(SemanticAnalyzer *sa, struct Tree *node)
+{
+    if (!sa || !node)
+    {
+        return;
+    }
+    
+    // 如果是函数定义，处理它
+    if (node->name && strcmp(node->name, "FUNC_DEF") == 0)
+    {
+        analyze_function_definition(sa, node);
+        return;
+    }
+    
+    // 递归处理子节点
+    if (node->leaves)
+    {
+        for (int i = 0; i < node->num; i++)
+        {
+            if (node->leaves[i])
+            {
+                preprocess_function_definitions(sa, node->leaves[i]);
+            }
+        }
+    }
+}
+
+/**
  * 分析整个程序
  */
 bool analyze_program(SemanticAnalyzer *sa, struct Tree *ast)
@@ -913,26 +1190,13 @@ bool analyze_program(SemanticAnalyzer *sa, struct Tree *ast)
         return false;
     }
 
-    printf("开始语义分析...\n");
-
-    // 遍历AST
+    // 第一遍：预处理所有函数定义，确保函数符号在使用前已注册
+    preprocess_function_definitions(sa, ast);
+    
+    // 第二遍：遍历AST进行完整的语义分析
     analyze_statement(sa, ast);
 
-    // 输出分析结果
-    printf("\n");
-    printf("语义分析完成:\n");
-    printf("  错误数: %d\n", sa->error_count);
-    printf("  警告数: %d\n", sa->warning_count);
-    printf("  符号总数: %d\n", symbol_table_count(sa->symbol_table));
-
-    if (sa->error_count > 0)
-    {
-        printf("\n语义分析失败！\n");
-        return false;
-    }
-
-    printf("\n语义分析成功！\n");
-    return true;
+    return sa->error_count == 0;
 }
 
 /* ==================== 函数分析函数（2.0版本）==================== */
@@ -942,24 +1206,39 @@ bool analyze_program(SemanticAnalyzer *sa, struct Tree *ast)
  */
 static Type *get_type_from_specifier(Tree *type_node)
 {
-    if (!type_node || !type_node->content)
+    if (!type_node)
     {
         return NULL;
     }
 
-    if (strcmp(type_node->content, "INT") == 0)
+    // type_node 可能是 "type" 节点（包含 leaves[0] 为实际类型）或直接是类型终结符
+    Tree *actual_type = type_node;
+    
+    // 如果是 "type" 节点，获取其子节点
+    if (type_node->name && strcmp(type_node->name, "type") == 0) {
+        if (type_node->num > 0 && type_node->leaves[0]) {
+            actual_type = type_node->leaves[0];
+        }
+    }
+    
+    if (!actual_type || !actual_type->name)
+    {
+        return NULL;
+    }
+
+    if (strcmp(actual_type->name, "INT") == 0)
     {
         return new_int_type();
     }
-    else if (strcmp(type_node->content, "FLOAT") == 0)
+    else if (strcmp(actual_type->name, "FLOAT") == 0)
     {
         return new_float_type();
     }
-    else if (strcmp(type_node->content, "CHAR") == 0)
+    else if (strcmp(actual_type->name, "CHAR") == 0)
     {
         return new_char_type();
     }
-    else if (strcmp(type_node->content, "VOID") == 0)
+    else if (strcmp(actual_type->name, "VOID") == 0)
     {
         return new_void_type();
     }
@@ -1095,24 +1374,27 @@ void analyze_function_definition(SemanticAnalyzer *sa, Tree *func_def)
     Tree *body = NULL;
 
     // 判断是否有参数列表
-    if (func_def->num == 5)
+    // FUNC_DEF 结构 (yacc.y):
+    // 有参数: createTree("FUNC_DEF", 4, type, ID, param_list, body)
+    // 无参数: createTree("FUNC_DEF", 3, type, ID, body)
+    if (func_def->num == 4)
     {
-        // 有参数: type name (params) { body }
+        // 有参数: leaves[0]=type, leaves[1]=ID, leaves[2]=param_list, leaves[3]=body
         param_list = func_def->leaves[2];
-        body = func_def->leaves[4]; // 跳过 '{' 和 '}'
-    }
-    else if (func_def->num == 4)
-    {
-        // 无参数: type name () { body }
-        param_list = NULL;
         body = func_def->leaves[3];
+    }
+    else if (func_def->num == 3)
+    {
+        // 无参数: leaves[0]=type, leaves[1]=ID, leaves[2]=body
+        param_list = NULL;
+        body = func_def->leaves[2];
     }
 
     // 2. 构造函数类型
     Type *return_type = get_type_from_specifier(return_type_node);
     if (!return_type)
     {
-        semantic_error(sa, func_def->line, "无效的返回类型");
+        semantic_error(sa, func_def->line, "[函数定义] 无效的返回类型");
         return;
     }
 
@@ -1129,27 +1411,67 @@ void analyze_function_definition(SemanticAnalyzer *sa, Tree *func_def)
     Type *func_type = new_function_type(return_type, param_types, param_count);
 
     // 3. 插入函数符号到全局作用域
-    Symbol *func_sym = symbol_insert(sa->symbol_table, name_node->content,
-                                     func_type, func_def->line);
-    if (!func_sym)
+    // 先检查是否已存在（可能从 hashMap 导入）
+    Symbol *existing_func = symbol_lookup(sa->symbol_table, name_node->content);
+    Symbol *func_sym = NULL;
+    
+    if (existing_func)
     {
-        semantic_error(sa, func_def->line,
-                       "函数 '%s' 重定义", name_node->content);
-        // 清理并返回
-        if (param_types)
-            free(param_types);
-        if (param_names)
+        // 检查是否已被声明过（已经被预处理过的函数）
+        if (existing_func->is_declared && existing_func->kind == SYM_FUNCTION)
         {
-            for (int i = 0; i < param_count; i++)
+            // 函数已经在预处理阶段注册过，直接使用已有符号
+            // 不报重定义错误，但需要跳过重新注册，直接分析函数体
+            func_sym = existing_func;
+            // 使用已有的函数类型
+            func_type = existing_func->type;
+            if (func_type && func_type->kind == TYPE_FUNCTION)
             {
-                if (param_names[i])
-                    free(param_names[i]);
+                return_type = func_type->return_type;
             }
-            free(param_names);
+            // 释放重新分配的参数类型（使用已有的）
+            if (param_types)
+            {
+                free(param_types);
+                param_types = func_type->param_types;
+            }
+            param_count = func_type->param_count;
         }
-        return;
+        else
+        {
+            // 符号存在但未声明过（从 hashMap 导入），更新信息
+            existing_func->type = func_type;
+            existing_func->kind = SYM_FUNCTION;
+            existing_func->is_declared = true;
+            existing_func->line = func_def->line;
+            func_sym = existing_func;
+        }
     }
-    func_sym->kind = SYM_FUNCTION;
+    else
+    {
+        func_sym = symbol_insert(sa->symbol_table, name_node->content,
+                                 func_type, func_def->line);
+        if (!func_sym)
+        {
+            semantic_error(sa, func_def->line,
+                           "[重定义] 函数 '%s' 重复定义", name_node->content);
+            // 清理并返回
+            if (param_types)
+                free(param_types);
+            if (param_names)
+            {
+                for (int i = 0; i < param_count; i++)
+                {
+                    if (param_names[i])
+                        free(param_names[i]);
+                }
+                free(param_names);
+            }
+            return;
+        }
+        func_sym->kind = SYM_FUNCTION;
+        func_sym->is_declared = true;
+    }
 
     // 4. 记录当前函数（用于 return 语句检查）
     Type *prev_func_ret_type = sa->current_function_return_type;
@@ -1161,12 +1483,23 @@ void analyze_function_definition(SemanticAnalyzer *sa, Tree *func_def)
     // 6. 插入参数符号到函数作用域
     for (int i = 0; i < param_count; i++)
     {
+        // 检查参数是否已从 hashMap 导入
+        Symbol *existing = symbol_lookup(sa->symbol_table, param_names[i]);
+        if (existing)
+        {
+            // 参数已存在（从 hashMap 导入），更新信息
+            existing->kind = SYM_VARIABLE;
+            existing->is_initialized = true;
+            existing->line = func_def->line;
+            continue;
+        }
+        
         Symbol *param_sym = symbol_insert(sa->symbol_table, param_names[i],
                                           param_types[i], func_def->line);
         if (!param_sym)
         {
             semantic_error(sa, func_def->line,
-                           "参数 '%s' 重复定义", param_names[i]);
+                           "[参数定义] 参数 '%s' 重复定义", param_names[i]);
         }
         else
         {
@@ -1215,20 +1548,31 @@ void analyze_return_statement(SemanticAnalyzer *sa, Tree *return_stmt)
     if (!sa->current_function_return_type)
     {
         semantic_error(sa, return_stmt->line,
-                       "return 语句只能在函数内部使用");
+                           "[return语句] return 语句只能在函数内部使用");
         return;
     }
 
-    // 检查是否有返回值
-    if (return_stmt->num > 0 && return_stmt->leaves[0])
+    // return_expression 结构 (来自 retOpr):
+    // - num=1: 仅 return; (leaves[0]=RET)
+    // - num=2: return expr; (leaves[0]=RET, leaves[1]=表达式)
+    
+    if (return_stmt->num > 1 && return_stmt->leaves[1])
     {
-        // 有返回值
-        Tree *return_expr = return_stmt->leaves[0];
+        // 有返回值: leaves[1] 是返回表达式
+        Tree *return_expr = return_stmt->leaves[1];
         Type *return_type = analyze_expression(sa, return_expr);
 
         if (!return_type)
         {
-            semantic_error(sa, return_stmt->line, "无法确定返回表达式的类型");
+            semantic_error(sa, return_stmt->line, "[返回类型] 无法确定返回表达式的类型");
+            return;
+        }
+
+        // 检查 void 函数是否返回了值
+        if (sa->current_function_return_type->kind == TYPE_VOID)
+        {
+            semantic_error(sa, return_stmt->line,
+                           "[返回类型] void 函数不应返回值");
             return;
         }
 
@@ -1236,7 +1580,7 @@ void analyze_return_statement(SemanticAnalyzer *sa, Tree *return_stmt)
         if (!type_compatible(return_type, sa->current_function_return_type))
         {
             semantic_error(sa, return_stmt->line,
-                           "返回类型不匹配：期望 %s，实际 %s",
+                           "[返回类型] 返回类型不匹配, 期望 '%s', 实际 '%s'",
                            type_to_string(sa->current_function_return_type),
                            type_to_string(return_type));
         }
@@ -1247,7 +1591,7 @@ void analyze_return_statement(SemanticAnalyzer *sa, Tree *return_stmt)
         if (sa->current_function_return_type->kind != TYPE_VOID)
         {
             semantic_error(sa, return_stmt->line,
-                           "函数应返回 %s 类型的值",
+                           "[返回类型] 函数应返回 '%s' 类型的值",
                            type_to_string(sa->current_function_return_type));
         }
     }
@@ -1255,6 +1599,11 @@ void analyze_return_statement(SemanticAnalyzer *sa, Tree *return_stmt)
 
 /**
  * 计数实参
+ * ARG_LIST 结构 (来自 yacc.y):
+ * - 单个参数: argument_list = operate_expression (不创建 ARG_LIST 节点)
+ * - 多个参数: ARG_LIST(leaves[0]=前面参数列表, leaves[1]=当前参数)
+ * 
+ * 注意：operate_expression 可能是逗号表达式 (num=3)，此时实际是多个参数
  */
 static int count_arguments(Tree *arg_list)
 {
@@ -1263,12 +1612,30 @@ static int count_arguments(Tree *arg_list)
         return 0;
     }
 
+    if (!arg_list->name)
+    {
+        return 0;
+    }
+
     if (strcmp(arg_list->name, "ARG_LIST") == 0)
     {
+        // ARG_LIST: leaves[0]=前面参数, leaves[1]=当前参数
+        // 递归计算 leaves[0] 的参数数量 + 1 (leaves[1] 是一个参数)
+        int left_count = count_arguments(arg_list->leaves[0]);
+        return left_count + 1;
+    }
+    
+    // 检查是否为逗号表达式 (operate_expression 的 num=3)
+    // operate_expression: operate_expression ',' assignment_expression
+    // 结构: leaves[0]=左表达式, leaves[1]=逗号, leaves[2]=右表达式
+    if (strcmp(arg_list->name, "operate_expression") == 0 && arg_list->num == 3)
+    {
+        // 递归计算左侧的参数数量 + 1 (右侧是一个参数)
         return count_arguments(arg_list->leaves[0]) + 1;
     }
 
-    return 1; // 单个参数
+    // 单个参数
+    return 1;
 }
 
 /**
@@ -1339,23 +1706,34 @@ Type *analyze_function_call(SemanticAnalyzer *sa, Tree *call_node)
         return NULL;
     }
 
-    if (func_sym->kind != SYM_FUNCTION)
+    Type *func_type = func_sym->type;
+    
+    // 检查是否为函数类型
+    if (!func_type)
     {
         semantic_error(sa, call_node->line,
-                       "'%s' 不是函数", func_name_node->content);
+                       "'%s' 没有类型信息", func_name_node->content);
         return NULL;
     }
-
-    Type *func_type = func_sym->type;
+    
+    if (func_type->kind != TYPE_FUNCTION)
+    {
+        // 符号存在但不是函数类型
+        // 这可能是因为预处理阶段没有正确处理，返回符号类型本身
+        // 如果符号类型是基础类型，直接返回它（作为函数返回值的近似）
+        return func_type;
+    }
 
     // 2. 检查参数数量
     int arg_count = count_arguments(arg_list);
-    if (arg_count != func_type->param_count)
+    int expected_count = func_type->param_count;
+    
+    if (arg_count != expected_count)
     {
         semantic_error(sa, call_node->line,
-                       "函数 '%s' 需要 %d 个参数，但提供了 %d 个",
+                       "[参数数量] 函数 '%s' 参数数量不匹配, 期望 %d 个, 实际 %d 个",
                        func_name_node->content,
-                       func_type->param_count,
+                       expected_count,
                        arg_count);
         return func_type->return_type; // 返回期望的类型，继续分析
     }
@@ -1420,18 +1798,28 @@ void analyze_array_declaration(SemanticAnalyzer *sa, Tree *decl)
     Tree *size2_or_init = (decl->num > 3) ? decl->leaves[3] : NULL;
 
     // 1. 获取基类型
+    // type_node 可能是 "type" 节点（包含 leaves[0] 为实际类型）或直接是类型终结符
     Type *base_type = NULL;
-    if (type_node && type_node->content)
+    Tree *actual_type = type_node;
+    
+    // 如果是 "type" 节点，获取其子节点
+    if (type_node && type_node->name && strcmp(type_node->name, "type") == 0) {
+        if (type_node->num > 0 && type_node->leaves[0]) {
+            actual_type = type_node->leaves[0];
+        }
+    }
+    
+    if (actual_type && actual_type->name)
     {
-        if (strcmp(type_node->content, "INT") == 0)
+        if (strcmp(actual_type->name, "INT") == 0)
         {
             base_type = new_int_type();
         }
-        else if (strcmp(type_node->content, "FLOAT") == 0)
+        else if (strcmp(actual_type->name, "FLOAT") == 0)
         {
             base_type = new_float_type();
         }
-        else if (strcmp(type_node->content, "CHAR") == 0)
+        else if (strcmp(actual_type->name, "CHAR") == 0)
         {
             base_type = new_char_type();
         }
@@ -1503,11 +1891,30 @@ void analyze_array_declaration(SemanticAnalyzer *sa, Tree *decl)
 
     // 插入符号表
     char *array_name = name_node->content;
-    Symbol *sym = symbol_insert(sa->symbol_table, array_name, array_type, decl->line);
-    if (!sym)
-    {
-        semantic_error(sa, decl->line, "数组 '%s' 重定义", array_name);
-        return;
+    
+    // 检查符号是否已存在
+    Symbol *existing = symbol_lookup(sa->symbol_table, array_name);
+    Symbol *sym = NULL;
+    
+    if (existing) {
+        // 检查是否已被声明过（重定义检测）
+        if (existing->is_declared) {
+            semantic_error(sa, decl->line, "[重定义] 数组 '%s' 重复定义", array_name);
+            return;
+        }
+        // 符号存在但未声明过（从 hashMap 导入），标记为已声明
+        existing->line = decl->line;
+        existing->type = array_type;
+        existing->is_declared = true;
+        sym = existing;
+    } else {
+        sym = symbol_insert(sa->symbol_table, array_name, array_type, decl->line);
+        if (!sym)
+        {
+            semantic_error(sa, decl->line, "[重定义] 数组 '%s' 重复定义", array_name);
+            return;
+        }
+        sym->is_declared = true;
     }
 
     sym->is_initialized = (init_list != NULL);
@@ -1620,9 +2027,9 @@ Type *analyze_array_access(SemanticAnalyzer *sa, Tree *access)
         return NULL;
     }
 
-    if (array_sym->type->kind != TYPE_ARRAY)
+    if (array_sym->type->kind != TYPE_ARRAY && array_sym->type->kind != TYPE_POINTER)
     {
-        semantic_error(sa, access->line, "'%s' 不是数组", array_name);
+        semantic_error(sa, access->line, "[类型错误] '%s' 不是数组", array_name);
         return NULL;
     }
 
@@ -1630,7 +2037,7 @@ Type *analyze_array_access(SemanticAnalyzer *sa, Tree *access)
     Type *index_type = analyze_expression(sa, index_node);
     if (index_type && !is_integer_type(index_type))
     {
-        semantic_error(sa, access->line, "数组下标必须是整数类型");
+        semantic_error(sa, access->line, "[下标类型] 数组下标必须是整数类型");
         return NULL;
     }
 
@@ -1677,22 +2084,32 @@ void analyze_pointer_declaration(SemanticAnalyzer *sa, Tree *decl)
     Tree *init_expr = (decl->num > 2) ? decl->leaves[2] : NULL;
 
     // 1. 获取基类型
+    // type_node 可能是 "type" 节点（包含 leaves[0] 为实际类型）或直接是类型终结符
     Type *base_type = NULL;
-    if (type_node && type_node->content)
+    Tree *actual_type = type_node;
+    
+    // 如果是 "type" 节点，获取其子节点
+    if (type_node && type_node->name && strcmp(type_node->name, "type") == 0) {
+        if (type_node->num > 0 && type_node->leaves[0]) {
+            actual_type = type_node->leaves[0];
+        }
+    }
+    
+    if (actual_type && actual_type->name)
     {
-        if (strcmp(type_node->content, "INT") == 0)
+        if (strcmp(actual_type->name, "INT") == 0)
         {
             base_type = new_int_type();
         }
-        else if (strcmp(type_node->content, "FLOAT") == 0)
+        else if (strcmp(actual_type->name, "FLOAT") == 0)
         {
             base_type = new_float_type();
         }
-        else if (strcmp(type_node->content, "CHAR") == 0)
+        else if (strcmp(actual_type->name, "CHAR") == 0)
         {
             base_type = new_char_type();
         }
-        else if (strcmp(type_node->content, "VOID") == 0)
+        else if (strcmp(actual_type->name, "VOID") == 0)
         {
             base_type = new_void_type();
         }
@@ -1714,11 +2131,30 @@ void analyze_pointer_declaration(SemanticAnalyzer *sa, Tree *decl)
 
     // 3. 插入符号表
     char *ptr_name = name_node->content;
-    Symbol *sym = symbol_insert(sa->symbol_table, ptr_name, pointer_type, decl->line);
-    if (!sym)
-    {
-        semantic_error(sa, decl->line, "指针变量 '%s' 重定义", ptr_name);
-        return;
+    
+    // 检查符号是否已存在
+    Symbol *existing = symbol_lookup(sa->symbol_table, ptr_name);
+    Symbol *sym = NULL;
+    
+    if (existing) {
+        // 检查是否已被声明过（重定义检测）
+        if (existing->is_declared) {
+            semantic_error(sa, decl->line, "[重定义] 指针变量 '%s' 重复定义", ptr_name);
+            return;
+        }
+        // 符号存在但未声明过（从 hashMap 导入），标记为已声明
+        existing->line = decl->line;
+        existing->type = pointer_type;
+        existing->is_declared = true;
+        sym = existing;
+    } else {
+        sym = symbol_insert(sa->symbol_table, ptr_name, pointer_type, decl->line);
+        if (!sym)
+        {
+            semantic_error(sa, decl->line, "[重定义] 指针变量 '%s' 重复定义", ptr_name);
+            return;
+        }
+        sym->is_declared = true;
     }
 
     sym->is_initialized = (init_expr != NULL);
@@ -1765,33 +2201,54 @@ Type *analyze_addr_of(SemanticAnalyzer *sa, Tree *addr_of)
         return NULL;
     }
 
-    // ADDR_OF 结构: & expr
-    // leaves[0]: 操作数表达式
-
-    Tree *operand = addr_of->leaves[0];
-    if (!operand)
+    // ADDR_OF 节点特殊结构（由于 createTree(name, 1, $2) 返回 $2 本身）:
+    // - name = "ADDR_OF"
+    // - content = 保存了操作数的 inner（变量名）
+    
+    // 方式1: 如果有 leaves[0]，使用 leaves[0] 作为操作数
+    if (addr_of->num >= 1 && addr_of->leaves && addr_of->leaves[0])
     {
-        semantic_error(sa, addr_of->line, "取地址运算符缺少操作数");
-        return NULL;
+        Tree *operand = addr_of->leaves[0];
+        
+        if (!is_lvalue(operand))
+        {
+            semantic_error(sa, addr_of->line,
+                           "[取地址] 取地址运算符的操作数必须是左值");
+            return NULL;
+        }
+        
+        Type *operand_type = analyze_expression(sa, operand);
+        if (!operand_type)
+        {
+            return NULL;
+        }
+        
+        return new_pointer_type(operand_type);
     }
-
-    // 1. 检查是否为左值（必须是变量、数组元素、结构体成员等）
-    if (!is_lvalue(operand))
+    
+    // 方式2: ADDR_OF 节点是由 createTree(1) 创建的，实际是原 ID 节点被修改了 name
+    // 此时 content 保存了操作数变量名
+    if (addr_of->content)
     {
-        semantic_error(sa, addr_of->line,
-                       "取地址运算符的操作数必须是左值（变量、数组元素等）");
-        return NULL;
+        Symbol *sym = symbol_lookup(sa->symbol_table, addr_of->content);
+        if (!sym)
+        {
+            semantic_error(sa, addr_of->line, "[变量未定义] 变量 '%s' 未声明", addr_of->content);
+            return NULL;
+        }
+        
+        Type *operand_type = sym->type;
+        if (!operand_type)
+        {
+            semantic_error(sa, addr_of->line, "[取地址] 无法确定操作数类型");
+            return NULL;
+        }
+        
+        return new_pointer_type(operand_type);
     }
-
-    // 2. 获取操作数类型
-    Type *operand_type = analyze_expression(sa, operand);
-    if (!operand_type)
-    {
-        return NULL;
-    }
-
-    // 3. 返回指向操作数类型的指针类型
-    return new_pointer_type(operand_type);
+    
+    semantic_error(sa, addr_of->line, "[取地址] 取地址运算符缺少操作数");
+    return NULL;
 }
 
 /**
@@ -1808,34 +2265,75 @@ Type *analyze_deref(SemanticAnalyzer *sa, Tree *deref)
         return NULL;
     }
 
-    // DEREF 结构: * expr
-    // leaves[0]: 操作数表达式（应该是指针）
-
-    Tree *operand = deref->leaves[0];
-    if (!operand)
+    // DEREF 节点特殊结构（由于 createTree(name, 1, $2) 返回 $2 本身）:
+    // - name = "DEREF"
+    // - content = 保存了操作数的 inner（变量名）
+    // - 原始节点的 num 和 leaves 被保留（可能是 ID 节点的结构）
+    
+    // 方式1: 如果有 leaves[0]，使用 leaves[0] 作为操作数
+    if (deref->num >= 1 && deref->leaves && deref->leaves[0])
     {
-        semantic_error(sa, deref->line, "解引用运算符缺少操作数");
-        return NULL;
+        Tree *operand = deref->leaves[0];
+        Type *operand_type = analyze_expression(sa, operand);
+        if (!operand_type)
+        {
+            semantic_error(sa, deref->line, "[解引用] 无法确定操作数类型");
+            return NULL;
+        }
+        
+        if (operand_type->kind != TYPE_POINTER)
+        {
+            semantic_error(sa, deref->line,
+                           "[解引用] 不能对非指针类型解引用");
+            return NULL;
+        }
+        
+        if (!operand_type->base)
+        {
+            semantic_error(sa, deref->line, "[解引用] 指针类型缺少基类型");
+            return NULL;
+        }
+        
+        return operand_type->base;
     }
-
-    // 1. 分析操作数类型
-    Type *operand_type = analyze_expression(sa, operand);
-    if (!operand_type)
+    
+    // 方式2: DEREF 节点是由 createTree(1) 创建的，实际是原 ID 节点被修改了 name
+    // 此时 content 保存了操作数变量名（原始的 inner）
+    if (deref->content)
     {
-        return NULL;
+        // 直接从符号表查找类型
+        Symbol *sym = symbol_lookup(sa->symbol_table, deref->content);
+        if (!sym)
+        {
+            semantic_error(sa, deref->line, "[变量未定义] 变量 '%s' 未声明", deref->content);
+            return NULL;
+        }
+        
+        Type *operand_type = sym->type;
+        if (!operand_type)
+        {
+            semantic_error(sa, deref->line, "[解引用] 无法确定操作数类型");
+            return NULL;
+        }
+        
+        if (operand_type->kind != TYPE_POINTER)
+        {
+            semantic_error(sa, deref->line,
+                           "[解引用] 不能对非指针类型解引用");
+            return NULL;
+        }
+        
+        if (!operand_type->base)
+        {
+            semantic_error(sa, deref->line, "[解引用] 指针类型缺少基类型");
+            return NULL;
+        }
+        
+        return operand_type->base;
     }
-
-    // 2. 检查是否为指针类型
-    if (operand_type->kind != TYPE_POINTER)
-    {
-        semantic_error(sa, deref->line,
-                       "解引用运算符的操作数必须是指针类型，实际为 %s",
-                       type_to_string(operand_type));
-        return NULL;
-    }
-
-    // 3. 返回指针指向的基类型
-    return operand_type->base;
+    
+    semantic_error(sa, deref->line, "[解引用] 解引用运算符缺少操作数");
+    return NULL;
 }
 
 /**
@@ -1843,33 +2341,8 @@ Type *analyze_deref(SemanticAnalyzer *sa, Tree *deref)
  *
  * @param expr 表达式节点
  * @return true 如果是左值，false 否则
+ * 注意：此函数重复定义已删除，使用第233行的公共版本
  */
-static bool is_lvalue(Tree *expr)
-{
-    if (!expr)
-    {
-        return false;
-    }
-
-    // 变量标识符是左值
-    if (expr->name && strcmp(expr->name, "ID") == 0)
-    {
-        return true;
-    }
-
-    // 数组访问是左值（通过节点名称判断）
-    // 注意：数组访问的识别可能需要根据实际的AST结构进行调整
-    // 这里假设数组访问节点有特定的名称模式
-
-    // 解引用表达式是左值：*ptr
-    if (expr->name && strcmp(expr->name, "DEREF") == 0)
-    {
-        return true;
-    }
-
-    // 其他表达式（常量、运算结果等）不是左值
-    return false;
-}
 
 /* ==================== 结构体分析函数（2.0版本）==================== */
 

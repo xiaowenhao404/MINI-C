@@ -93,13 +93,20 @@ Mini-C/
 │   └── requirements.txt          # Python 依赖
 │
 ├── docs/                         # 文档目录
-│   ├── grammar.md                # 语法规范
-│   ├── design.md                 # 设计文档
-│   ├── codegen_manual.md         # 代码生成手册
-│   ├── optimization.md           # 优化说明
-│   ├── user_guide.md             # 用户指南
-│   ├── api.md                    # API 文档
-│   └── error_handling_guide.md   # 错误处理指南
+│   ├── 贡献说明.md               # 参考项目与核心贡献
+│   ├── 设计文档.md               # 编译器整体设计
+│   ├── 语法规范.md               # Mini-C 语法规则
+│   ├── 词法与语法分析总结.md     # Flex/Bison 使用
+│   ├── 中间代码生成总结.md       # IR 设计与实现
+│   ├── 汇编代码生成总结.md       # 汇编生成手册
+│   ├── 类型检查总结.md           # 类型系统
+│   ├── 代码优化总结.md           # 优化算法
+│   ├── 扩展功能总结.md           # 扩展功能实现
+│   ├── Web可视化总结.md          # Web 界面
+│   ├── 错误检测总结.md           # 错误类型说明
+│   ├── 错误演示样例.md           # 错误演示代码
+│   ├── 开发问题总结.md           # 开发问题与解决
+│   └── 分工与问题.md             # 团队分工
 │
 ├── tests/                        # 测试用例
 │   ├── integration/              # 集成测试
@@ -349,15 +356,47 @@ void main() {
 
 ## 文档索引
 
-| 文档                                             | 说明               |
-| ------------------------------------------------ | ------------------ |
-| [docs/grammar.md](docs/grammar.md)               | Mini-C 语法规范    |
-| [docs/design.md](docs/design.md)                 | 编译器设计文档     |
-| [docs/codegen_manual.md](docs/codegen_manual.md) | 代码生成手册       |
-| [docs/DEMO_WEB.md](docs/DEMO_WEB.md)             | Web 界面演示文档   |
-| [docs/DEMO_WSL.md](docs/DEMO_WSL.md)             | WSL 命令行演示文档 |
-| [docs/CONTRIBUTION.md](docs/CONTRIBUTION.md)     | 参考代码与贡献说明 |
-| [web/README.md](web/README.md)                   | Web 界面说明       |
+### 核心文档
+
+| 文档 | 说明 |
+| ---- | ---- |
+| [docs/贡献说明.md](docs/贡献说明.md) | 参考项目与核心贡献 |
+| [docs/设计文档.md](docs/设计文档.md) | 编译器整体设计 |
+| [docs/语法规范.md](docs/语法规范.md) | Mini-C 语法规则 |
+
+### 编译器模块文档
+
+| 文档 | 说明 |
+| ---- | ---- |
+| [docs/词法与语法分析总结.md](docs/词法与语法分析总结.md) | Flex/Bison 使用与实现 |
+| [docs/中间代码生成总结.md](docs/中间代码生成总结.md) | IR 设计与标签系统 |
+| [docs/汇编代码生成总结.md](docs/汇编代码生成总结.md) | x86-64 汇编生成 |
+| [docs/类型检查总结.md](docs/类型检查总结.md) | 类型系统与语义分析 |
+| [docs/代码优化总结.md](docs/代码优化总结.md) | 常量折叠、死代码消除、活性分析 |
+
+### 功能与演示文档
+
+| 文档 | 说明 |
+| ---- | ---- |
+| [docs/扩展功能总结.md](docs/扩展功能总结.md) | 10 项扩展功能实现 |
+| [docs/Web可视化总结.md](docs/Web可视化总结.md) | Flask Web 界面 |
+| [docs/错误检测总结.md](docs/错误检测总结.md) | 错误类型与输出格式 |
+| [docs/错误演示样例.md](docs/错误演示样例.md) | 可复制的错误演示代码 |
+
+### 开发与协作文档
+
+| 文档 | 说明 |
+| ---- | ---- |
+| [docs/开发问题总结.md](docs/开发问题总结.md) | 开发中遇到的问题与解决 |
+| [docs/分工与问题.md](docs/分工与问题.md) | 团队分工与个人问题总结 |
+| [web/Windows使用说明.md](web/Windows使用说明.md) | Windows 环境使用指南 |
+
+### 测试文档
+
+| 文档 | 说明 |
+| ---- | ---- |
+| [tests/integration/集成测试说明.md](tests/integration/集成测试说明.md) | 集成测试用例 |
+| [tests/codegen/代码生成测试说明.md](tests/codegen/代码生成测试说明.md) | 代码生成测试 |
 
 ---
 
@@ -382,6 +421,24 @@ void main() {
 2. **添加新运算符**：修改 `yacc.y` 和 `asm_generator.py`
 3. **添加新控制流**：修改 `tree.c` 和 `yacc.y`
 4. **优化改进**：参考 `src/optimization/` 目录
+
+### 错误检测测试
+
+编译器支持完整的错误检测和类型检查功能，包含 **30+ 种错误类型**：
+
+```bash
+# 运行错误测试
+./compiler test_error.c
+```
+
+**支持的错误类型**：
+- **词法错误**：未闭合注释、非法字符
+- **语法错误**：缺少分号、括号不匹配、语句结构错误
+- **语义错误**：变量未定义/重定义、类型不匹配、数组/指针/函数/结构体相关错误
+
+**测试文档**：
+- 📚 错误类型说明：[docs/错误检测总结.md](docs/错误检测总结.md)
+- 📝 演示样例：[docs/错误演示样例.md](docs/错误演示样例.md)
 
 ---
 

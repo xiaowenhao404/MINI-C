@@ -11,7 +11,7 @@ PYTHON = python3
 
 # ==================== 编译选项 ====================
 # 通用编译选项
-CFLAGS = -Wall -std=c11
+CFLAGS = -Wall -std=c11 -Wno-format-truncation
 # 调试版本选项
 DEBUG_FLAGS = -g -O0 -DDEBUG
 # 发布版本选项
@@ -46,6 +46,10 @@ YACC_HEADER = yacc.tab.h
 UTIL_SOURCES = $(UTILS_DIR)/tree.c $(UTILS_DIR)/hashMap.c $(UTILS_DIR)/stack.c \
                $(UTILS_DIR)/inner.c $(UTILS_DIR)/linkList.c
 
+# 语义分析器文件
+SEMANTIC_SOURCES = $(SEMANTIC_DIR)/semantic_analyzer.c $(SEMANTIC_DIR)/type_system.c \
+                   $(SEMANTIC_DIR)/symbol_table.c
+
 # 编译器可执行文件名
 COMPILER = compiler
 
@@ -67,10 +71,10 @@ all: $(COMPILER)
 endif
 
 # 编译器主程序
-$(COMPILER): $(LEX_OUTPUT) $(YACC_OUTPUT) $(UTIL_SOURCES)
+$(COMPILER): $(LEX_OUTPUT) $(YACC_OUTPUT) $(UTIL_SOURCES) $(SEMANTIC_SOURCES)
 	@echo "=== 编译编译器核心 ==="
-	$(CC) $(CFLAGS) $(CURRENT_FLAGS) -I$(UTILS_DIR) -o $(COMPILER) \
-		$(YACC_OUTPUT) $(LEX_OUTPUT) $(UTIL_SOURCES) -lfl
+	$(CC) $(CFLAGS) $(CURRENT_FLAGS) -I$(UTILS_DIR) -I$(SEMANTIC_DIR) -o $(COMPILER) \
+		$(YACC_OUTPUT) $(LEX_OUTPUT) $(UTIL_SOURCES) $(SEMANTIC_SOURCES) -lfl -lm
 	@echo "编译器生成成功: $(COMPILER)"
 
 # 生成词法分析器
@@ -87,27 +91,57 @@ $(YACC_OUTPUT) $(YACC_HEADER): $(YACC_FILE)
 
 # 编译指定的C源文件
 compile: $(COMPILER)
-	@echo "=== 开始编译 $(TEST_FILE) ==="
+	@echo "=========================================="
+	@echo "📄 源文件: $(TEST_FILE)"
+	@echo "=========================================="
 	@if [ ! -f "$(TEST_FILE)" ]; then \
-		echo "错误: 文件 $(TEST_FILE) 不存在"; exit 1; \
+		echo "❌ 错误: 文件 $(TEST_FILE) 不存在"; exit 1; \
 	fi
-	@echo "--- 步骤 1/5: 词法和语法分析 ---"
-	./$(COMPILER) $(TEST_FILE)
-	@echo "--- 步骤 2/5: 生成中间代码 ---"
-	@if [ -f Innercode ]; then echo "中间代码已生成"; else echo "警告: 中间代码生成失败"; fi
-	@echo "--- 步骤 3/5: 生成汇编代码 ---"
+	@echo ""
+	@echo "📦 步骤 1/5: 词法、语法和语义分析"
+	@echo "------------------------------------------"
+	@./$(COMPILER) $(TEST_FILE) || { echo "❌ 编译阶段失败"; exit 1; }
+	@echo ""
+	@echo "📦 步骤 2/5: 检查中间代码"
+	@echo "------------------------------------------"
+	@if [ -f Innercode ]; then \
+		lines=$$(wc -l < Innercode); \
+		echo "✅ 中间代码已生成"; \
+		echo "   📖 共 $$lines 行"; \
+	else \
+		echo "⚠️ 警告: 中间代码生成失败"; \
+	fi
+	@echo ""
+	@echo "📦 步骤 3/5: 生成汇编代码"
+	@echo "------------------------------------------"
 	$(PYTHON) $(SCRIPT_DIR)/asm_generator.py
-	@echo "--- 步骤 4/5: 汇编 ---"
+	@echo ""
+	@echo "📦 步骤 4/5: 汇编"
+	@echo "------------------------------------------"
 	$(NASM) -f elf64 assembly.asm -o $(file).o
-	@echo "--- 步骤 5/5: 链接 ---"
+	@echo "✅ 汇编完成: $(file).o"
+	@echo ""
+	@echo "📦 步骤 5/5: 链接"
+	@echo "------------------------------------------"
 	$(CC) -no-pie -o $(file) $(file).o
-	@echo "=== 编译成功！可执行文件: $(file) ==="
+	@echo "✅ 链接完成: $(file)"
+	@echo ""
+	@echo "=========================================="
+	@echo "🎉 编译成功！可执行文件: $(file)"
+	@echo "=========================================="
 	@echo "运行方式: ./$(file)"
 
 # 编译并运行
 run: compile
-	@echo "=== 运行程序 ==="
-	./$(file)
+	@echo ""
+	@echo "=========================================="
+	@echo "▶️  运行程序: ./$(file)"
+	@echo "=========================================="
+	@./$(file)
+	@echo ""
+	@echo "=========================================="
+	@echo "✅ 程序执行完成"
+	@echo "=========================================="
 
 # ==================== 调试版本 ====================
 
@@ -191,30 +225,30 @@ clean-all: clean
 # ==================== 帮助信息 ====================
 
 help:
-	@echo ========================================
-	@echo   Mini-C 编译器 Makefile 使用帮助
-	@echo ========================================
-	@echo.
-	@echo 常用命令:
-	@echo   make                 - 编译编译器
-	@echo   make file=^<name^>     - 编译指定的C文件（不含.c后缀）
-	@echo   make run file=^<name^> - 编译并运行指定的C文件
-	@echo   make debug           - 编译调试版本
-	@echo   make test            - 运行测试套件
-	@echo   make clean           - 清理生成文件
-	@echo   make check-env       - 检查开发环境
-	@echo.
-	@echo 查看中间结果:
-	@echo   make show-lexical    - 查看词法分析结果
-	@echo   make show-grammar    - 查看语法分析结果
-	@echo   make show-ir         - 查看中间代码
-	@echo   make show-asm        - 查看汇编代码
-	@echo   make show-all        - 查看所有中间结果
-	@echo.
-	@echo 示例:
-	@echo   make file=test       - 编译 test.c
-	@echo   make run file=test   - 编译并运行 test.c
-	@echo ========================================
+	@echo "========================================"
+	@echo "  Mini-C 编译器 Makefile 使用帮助"
+	@echo "========================================"
+	@echo ""
+	@echo "常用命令:"
+	@echo "  make                 - 编译编译器"
+	@echo "  make file=<name>     - 编译指定的C文件（不含.c后缀）"
+	@echo "  make run file=<name> - 编译并运行指定的C文件"
+	@echo "  make debug           - 编译调试版本"
+	@echo "  make test            - 运行测试套件"
+	@echo "  make clean           - 清理生成文件"
+	@echo "  make check-env       - 检查开发环境"
+	@echo ""
+	@echo "查看中间结果:"
+	@echo "  make show-lexical    - 查看词法分析结果"
+	@echo "  make show-grammar    - 查看语法分析结果"
+	@echo "  make show-ir         - 查看中间代码"
+	@echo "  make show-asm        - 查看汇编代码"
+	@echo "  make show-all        - 查看所有中间结果"
+	@echo ""
+	@echo "示例:"
+	@echo "  make file=test       - 编译 test.c"
+	@echo "  make run file=test   - 编译并运行 test.c"
+	@echo "========================================"
 
 # ==================== 伪目标声明 ====================
 
